@@ -54,7 +54,6 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 NumberOfLeaves = 10,
                 NumberOfThreads = 1,
                 MinimumExampleCountPerLeaf = 2,
-                UnbalancedSets = false, // default value
             });
 
             var pipeWithTrainer = pipe.Append(trainer);
@@ -436,35 +435,6 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             // Train ML.NET LightGBM and native LightGBM and apply the trained models to the training set.
             LightGbmHelper(useSoftmax: true, out string modelString, out List<GbmExample> mlnetPredictions, out double[] nativeResult1, out double[] nativeResult0);
-
-            // The i-th predictor returned by LightGBM produces the raw score, denoted by z_i, of the i-th class.
-            // Assume that we have n classes in total. The i-th class probability can be computed via
-            // p_i = exp(z_i) / (exp(z_1) + ... + exp(z_n)).
-            Assert.True(modelString != null);
-            // Compare native LightGBM's and ML.NET's LightGBM results example by example
-            for (int i = 0; i < _rowNumber; ++i)
-            {
-                double sum = 0;
-                for (int j = 0; j < _classNumber; ++j)
-                {
-                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 6);
-                    sum += Math.Exp((float)nativeResult1[j + i * _classNumber]);
-                }
-                for (int j = 0; j < _classNumber; ++j)
-                {
-                    double prob = Math.Exp(nativeResult1[j + i * _classNumber]);
-                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 6);
-                }
-            }
-
-            Done();
-        }
-
-        [LightGBMFact]
-        public void LightGbmMulticlassEstimatorCompareUnbalanced()
-        {
-            // Train ML.NET LightGBM and native LightGBM and apply the trained models to the training set.
-            LightGbmHelper(useSoftmax: true, sigmoid: .5, out string modelString, out List<GbmExample> mlnetPredictions, out double[] nativeResult1, out double[] nativeResult0, unbalancedSets:true);
 
             // The i-th predictor returned by LightGBM produces the raw score, denoted by z_i, of the i-th class.
             // Assume that we have n classes in total. The i-th class probability can be computed via
