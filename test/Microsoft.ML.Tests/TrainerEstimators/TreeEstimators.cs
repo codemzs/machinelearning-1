@@ -301,26 +301,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         }
 
         /// <summary>
-        /// LightGbmMulticlass TrainerEstimator test with options
-        /// </summary>
-        [LightGBMFact]
-        public void LightGbmMulticlassEstimatorWithOptions()
-        {
-            var options = new LightGbmMulticlassTrainer.Options
-            {
-                EvaluationMetric = LightGbmMulticlassTrainer.Options.EvaluateMetricType.Default
-            };
-
-            var (pipeline, dataView) = GetMulticlassPipeline();
-            var trainer = ML.MulticlassClassification.Trainers.LightGbm(options);
-            var pipe = pipeline.Append(trainer)
-                    .Append(new KeyToValueMappingEstimator(Env, "PredictedLabel"));
-            TestEstimatorCore(pipe, dataView);
-            Done();
-        }
-
-        /// <summary>
-        /// LightGbmMulticlass CorrectSigmoid test
+        /// LightGbmMulticlass CorrectSigmoid test 
         /// </summary>
         [LightGBMFact]
         public void LightGbmMulticlassEstimatorCorrectSigmoid()

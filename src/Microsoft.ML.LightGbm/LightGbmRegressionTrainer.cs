@@ -138,8 +138,7 @@ namespace Microsoft.ML.Trainers.LightGbm
             static Options()
             {
                 NameMapping.Add(nameof(EvaluateMetricType), "metric");
-                NameMapping.Add(nameof(EvaluateMetricType.None), "None");
-                NameMapping.Add(nameof(EvaluateMetricType.Default), "");
+                NameMapping.Add(nameof(EvaluateMetricType.None), "");
                 NameMapping.Add(nameof(EvaluateMetricType.MeanAbsoluteError), "mae");
                 NameMapping.Add(nameof(EvaluateMetricType.RootMeanSquaredError), "rmse");
                 NameMapping.Add(nameof(EvaluateMetricType.MeanSquaredError), "mse");
@@ -148,7 +147,8 @@ namespace Microsoft.ML.Trainers.LightGbm
             internal override Dictionary<string, object> ToDictionary(IHost host)
             {
                 var res = base.ToDictionary(host);
-                res[GetOptionName(nameof(EvaluateMetricType))] = GetOptionName(EvaluationMetric.ToString());
+                if (EvaluationMetric != EvaluateMetricType.Default)
+                    res[GetOptionName(nameof(EvaluateMetricType))] = GetOptionName(EvaluationMetric.ToString());
 
                 return res;
             }

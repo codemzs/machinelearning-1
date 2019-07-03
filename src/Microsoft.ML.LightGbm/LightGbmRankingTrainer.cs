@@ -149,8 +149,7 @@ namespace Microsoft.ML.Trainers.LightGbm
             {
                 NameMapping.Add(nameof(CustomGains), "label_gain");
                 NameMapping.Add(nameof(EvaluateMetricType), "metric");
-                NameMapping.Add(nameof(EvaluateMetricType.None), "None");
-                NameMapping.Add(nameof(EvaluateMetricType.Default), "");
+                NameMapping.Add(nameof(EvaluateMetricType.None), "");
                 NameMapping.Add(nameof(EvaluateMetricType.MeanAveragedPrecision), "map");
                 NameMapping.Add(nameof(EvaluateMetricType.NormalizedDiscountedCumulativeGain), "ndcg");
             }
@@ -160,7 +159,8 @@ namespace Microsoft.ML.Trainers.LightGbm
                 var res = base.ToDictionary(host);
                 res[GetOptionName(nameof(Sigmoid))] = Sigmoid;
                 res[GetOptionName(nameof(CustomGains))] = string.Join(",", CustomGains);
-                res[GetOptionName(nameof(EvaluateMetricType))] = GetOptionName(EvaluationMetric.ToString());
+                if (EvaluationMetric != EvaluateMetricType.Default)
+                    res[GetOptionName(nameof(EvaluateMetricType))] = GetOptionName(EvaluationMetric.ToString());
 
                 return res;
             }
