@@ -267,7 +267,7 @@ namespace Microsoft.ML.Trainers
         /// <summary>
         /// Retrieves the model parameters.
         /// </summary>
-        internal ImmutableArray<object> SubModelParameters => _impl.Predictors.Cast<object>().ToImmutableArray();
+        private ImmutableArray<object> SubModelParameters => _impl.Predictors.Cast<object>().ToImmutableArray();
 
         /// <summary>
         /// The type of the prediction task.
