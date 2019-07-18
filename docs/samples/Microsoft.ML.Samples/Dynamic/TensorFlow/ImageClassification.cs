@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -18,7 +19,8 @@ namespace Samples.Dynamic
         {
             // Download the ResNet 101 model from the location below.
             // https://storage.googleapis.com/download.tensorflow.org/models/tflite_11_05_08/resnet_v2_101.tgz
-
+            var sw = new Stopwatch();
+            sw.Start();
             string modelLocation = "resnet_v2_101_299_frozen.pb";
             if (!File.Exists(modelLocation))
             {
@@ -59,7 +61,7 @@ namespace Samples.Dynamic
                 }
                 Console.WriteLine(new string('-', 10));
             }
-
+            Console.WriteLine(sw.Elapsed);
             // Results look like below...
             //Class #0 score = -0.8092947
             //Class #1 score = -0.3310375

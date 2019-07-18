@@ -357,21 +357,15 @@ namespace Microsoft.ML.Transforms.TensorFlow
         /// </remarks>
         public class Runner
         {
-            private List<TF_Input> _inputs;
-            private List<TF_Output> _outputs;
-            private List<Tensor> _inputValues;
+            private Dictionary<Operation, FeedItem> _inputFeedItems;
             private List<Operation> _targets;
             private Session _session;
 
             internal Runner(Session session)
             {
-                _inputs = new List<TF_Input>();
-                _outputs = new List<TF_Output>();
-                _inputValues = new List<Tensor>();
+                _inputFeedItems = new Dictionary<Operation, FeedItem>();
                 _targets = new List<Operation>();
                 _session = session;
-                RunMetadata = null;
-                RunOptions = null;
             }
 
             /// <summary>
@@ -380,12 +374,14 @@ namespace Microsoft.ML.Transforms.TensorFlow
             /// <returns>An instance to the runner, so you can easily chain the operations together.</returns>
             /// <param name="input">Incoming port.</param>
             /// <param name="value">Value to assing to the incoming port.</param>
-            public Runner AddInput(TF_Input input, Tensor value)
+            public Runner AddInput(Operation input, Tensor value)
             {
                 if (value == null)
                     throw new ArgumentNullException(nameof(value));
-                _inputs.Add(input);
-                _inputValues.Add(value);
+
+                if (_inputFeedItems.ContainsKey(input))
+                    _inputFeedItems[input].Value = value;
+
                 return this;
             }
 
@@ -399,8 +395,9 @@ namespace Microsoft.ML.Transforms.TensorFlow
             {
                 if (value == null)
                     throw new ArgumentNullException(nameof(value));
-                _inputs.Add(ParseInput(input));
-                _inputValues.Add(value);
+                var op = ParseOperation(input).Item1;
+                _inputFeedItems.Clear();
+                _inputFeedItems[op] = new FeedItem(op, value);
                 return this;
             }
 
@@ -416,7 +413,7 @@ namespace Microsoft.ML.Transforms.TensorFlow
                 return this;
             }
 
-            private TF_Input ParseInput(string operation)
+            private (Operation, int) ParseOperation(string operation)
             {
                 var p = operation.IndexOf(':');
                 if (p != -1 && p != operation.Length - 1)
@@ -424,25 +421,10 @@ namespace Microsoft.ML.Transforms.TensorFlow
                     var op = operation.Substring(0, p);
                     if (int.TryParse(operation.Substring(p + 1), out var idx))
                     {
-                        return new TF_Input(_session.graph.OperationByName(op), idx);
+                        return (_session.graph.OperationByName(op), idx);
                     }
                 }
-                return new TF_Input(_session.graph.OperationByName(operation), 0);
-            }
-
-            // Parses user strings that contain both the operation name and an index.
-            private TF_Output ParseOutput(string operation)
-            {
-                var p = operation.IndexOf(':');
-                if (p != -1 && p != operation.Length - 1)
-                {
-                    var op = operation.Substring(0, p);
-                    if (int.TryParse(operation.Substring(p + 1), out var idx))
-                    {
-                        return new TF_Output(_session.graph.OperationByName(op), idx);
-                    }
-                }
-                return new TF_Output(_session.graph.OperationByName(operation), 0);
+                return (_session.graph.OperationByName(operation), 0);
             }
 
             /// <summary>
@@ -458,55 +440,6 @@ namespace Microsoft.ML.Transforms.TensorFlow
             }
 
             /// <summary>
-            /// Makes the Run method return the index-th output of the tensor referenced by operation.
-            /// </summary>
-            /// <returns>The instance of runner, to allow chaining operations.</returns>
-            /// <param name="operation">The name of the operation in the graph.</param>
-            /// <param name="index">The index of the output in the operation.</param>
-            public Runner Fetch(string operation, int index)
-            {
-                var op = _session.graph.OperationByName(operation);
-                _outputs.Add(new TF_Output(op, index));
-                return this;
-            }
-
-            /// <summary>
-            /// Makes the Run method return the output of the tensor referenced by operation, the operation string can contain the output index.
-            /// </summary>
-            /// <returns>The instance of runner, to allow chaining operations.</returns>
-            /// <param name="operation">The name of the operation in the graph, which might be a simple name, or it might be name:index,
-            /// where the index is the .</param>
-            public Runner Fetch(string operation)
-            {
-                var op = ParseOutput(operation);
-                _outputs.Add(op);
-                return this;
-            }
-
-            /// <summary>
-            /// Makes the Run method return the output of the tensor referenced by output
-            /// </summary>
-            /// <returns>The instance of runner, to allow chaining operations.</returns>
-            /// <param name="output">The output referencing a specified tensor.</param>
-            public Runner Fetch(TF_Output output)
-            {
-                _outputs.Add(output);
-                return this;
-            }
-
-            /// <summary>
-            /// Makes the Run method return the output of all the tensor referenced by outputs.
-            /// </summary>
-            /// <returns>The instance of runner, to allow chaining operations.</returns>
-            /// <param name="outputs">The outputs referencing a specified tensor.</param>
-            public Runner Fetch(params TF_Output[] outputs)
-            {
-                foreach (var output in outputs)
-                    _outputs.Add(output);
-                return this;
-            }
-
-            /// <summary>
             /// Makes the Run method return the output of all the tensor referenced by outputs.
             /// </summary>
             /// <returns>The instance of runner, to allow chaining operations.</returns>
@@ -514,19 +447,14 @@ namespace Microsoft.ML.Transforms.TensorFlow
             public Runner Fetch(params string[] outputs)
             {
                 foreach (var output in outputs)
-                    _outputs.Add(ParseOutput(output));
+                {
+                    if (_targets.Count > 0)
+                        continue;
+
+                    _targets.Add(_session.graph.OperationByName(output));
+                }
                 return this;
             }
-
-            /// <summary>
-            /// Protocol buffer encoded block containing the metadata passed to the <see cref="M:TensorFlow.TFSession.Run"/> method.
-            /// </summary>
-            public Tensorflow.Buffer RunMetadata;
-
-            /// <summary>
-            /// Protocol buffer encoded block containing the run options passed to the <see cref="M:TensorFlow.TFSession.Run"/> method.
-            /// </summary>
-            public Tensorflow.Buffer RunOptions;
 
             /// <summary>
             ///  Execute the graph fragments necessary to compute all requested fetches.
@@ -535,32 +463,81 @@ namespace Microsoft.ML.Transforms.TensorFlow
             /// <param name="status">Status buffer, if specified a status code will be left here, if not specified, a <see cref="T:TensorFlow.TFException"/> exception is raised if there is an error.</param>
             public Tensor[] Run(Status status = null)
             {
-                FeedItem[] items = new FeedItem[_inputValues.Count];
-                for(int index = 0; index < _inputValues.Count; index++)
-                {
-                    items[index] = new FeedItem(_inputValues[index], new NDArray(_inputValues[index].Data<float>(), _inputValues[index].TensorShape));
-                }
 
-                return (Tensor[])_session.run(_targets.ToArray(), items);
+                //return (Tensor[])_session.run(_targets.ToArray(), _inputFeedItems.Values.ToArray());
+                return Run(
+                    _inputFeedItems.Values.Select(x => new TF_Output(((Operation)x.Key), 0)).ToArray(),
+                    _inputFeedItems.Values.Select(x => (Tensor)x.Value).ToArray(),
+                    _targets.Select(x => new TF_Output(x, 0)).ToArray(),
+                    _targets.ToArray());
             }
 
             /// <summary>
-            /// Run the specified operation, by adding it implicity to the output, single return value
+            /// Executes a pipeline given the specified inputs, inputValues, outputs, targetOpers, runMetadata and runOptions.
+            /// A simpler API is available by calling the <see cref="M:GetRunner"/> method which performs all the bookkeeping
+            /// necessary.
             /// </summary>
-            /// <param name="operation">The output of the operation.</param>
+            /// <returns>An array of tensors fetched from the requested outputs.</returns>
+            /// <param name="inputs">Inputs nodes.</param>
+            /// <param name="inputValues">Input values.</param>
+            /// <param name="outputs">Output nodes.</param>
+            /// <param name="targetOpers">Target operations to execute.</param>
+            /// <param name="runMetadata">Run metadata, a buffer containing the protocol buffer encoded value for https://github.com/tensorflow/tensorflow/blob/r1.9/tensorflow/core/protobuf/config.proto.</param>
+            /// <param name="runOptions">Run options, a buffer containing the protocol buffer encoded value for https://github.com/tensorflow/tensorflow/blob/r1.9/tensorflow/core/protobuf/config.proto.</param>
             /// <param name="status">Status buffer, if specified a status code will be left here, if not specified, a <see cref="T:TensorFlow.TFException"/> exception is raised if there is an error.</param>
-            /// <remarks>
-            /// This method is a convenience method, and when you call it, it will clear any
-            /// calls that you might have done to Fetch() and use the specified operation to Fetch
-            /// instead.
-            /// </remarks>
-            public Tensor Run(TF_Output operation, Status status = null)
+            public Tensor[] Run(TF_Output[] inputs, Tensor[] inputValues, TF_Output[] outputs, Operation[] targetOpers = null)
             {
-                _outputs.Clear();
-                Fetch(operation);
-                return Run(status)[0];
-            }
+                if (_session == IntPtr.Zero)
+                    new ObjectDisposedException(nameof(_session));
 
+                if (inputs == null)
+                    throw new ArgumentNullException(nameof(inputs));
+                if (inputValues == null)
+                    throw new ArgumentNullException(nameof(inputValues));
+                if (outputs == null)
+                    throw new ArgumentNullException(nameof(outputs));
+                int iLen = inputs.Length;
+                if (iLen != inputValues.Length)
+                    throw new ArgumentException("inputs and inputValues have different lengths", "inputs");
+                int oLen = outputs.Length;
+
+                var cstatus = new Status();
+
+                // Create arrays for the unmanaged versions
+                var ivals = new IntPtr[iLen];
+                for (int i = 0; i < iLen; i++)
+                    ivals[i] = inputValues[i];
+
+                // I believe this might not be necessary, the output values in TF_SessionRun looks like a write-only result
+                var ovals = new IntPtr[outputs.Length];
+                IntPtr[] topers = null;
+                int tLen = 0;
+                if (targetOpers != null)
+                {
+                    tLen = targetOpers.Length;
+                    topers = new IntPtr[tLen];
+                    for (int i = 0; i < tLen; i++)
+                        topers[i] = targetOpers[i];
+                }
+
+                unsafe
+                {
+                    c_api.TF_SessionRun(_session, null, inputs, ivals, iLen, outputs, ovals, oLen, topers, tLen, IntPtr.Zero, new Status());
+                }
+
+                cstatus.Check(true);
+
+                // Ensure that the input tensors remain rooted, so that the GC won't collect & run finalizers between
+                // when they are copied to ivals and TF_SessionRun is called.
+                GC.KeepAlive(inputValues);
+
+                var result = new Tensor[oLen];
+                for (int i = 0; i < oLen; i++)
+                {
+                    result[i] = new Tensor(ovals[i]);
+                }
+                return result;
+            }
         }
 
     }

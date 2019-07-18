@@ -49,6 +49,8 @@ namespace Microsoft.ML.Transforms
         internal readonly TF_DataType[] TFOutputTypes;
         internal readonly TF_DataType[] TFInputTypes;
         internal readonly TensorShape[] TFInputShapes;
+        internal readonly (Operation, int)[] TFInputOperations;
+        internal readonly (Operation, int)[] TFOutputOperations;
         internal Graph Graph => Session.graph;
 
         internal readonly string[] Inputs;
@@ -399,8 +401,7 @@ namespace Microsoft.ML.Transforms
             float metric = 0;
             for (int i = 0; i < inputColIndices.Length; i++)
             {
-                var inputName = inputsForTraining[i];
-                Runner.AddInput(inputName, srcTensorGetters[i].GetBufferedBatchTensor());
+                Runner.AddInput(TFInputOperations[i].Item1, srcTensorGetters[i].GetBufferedBatchTensor());
             }
 
             if (options.LearningRateOperation != null)
@@ -560,31 +561,49 @@ namespace Microsoft.ML.Transforms
             Inputs = inputColumnNames;
             Outputs = outputColumnNames;
 
-            (TFInputTypes, TFInputShapes) = GetInputInfo(Host, Session, Inputs);
-            (TFOutputTypes, OutputTypes) = GetOutputInfo(Host, Session, Outputs);
+            (TFInputTypes, TFInputShapes, TFInputOperations) = GetInputInfo(Host, Session, Inputs);
+            (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, Outputs);
         }
 
-        internal static (TF_DataType[] tfInputTypes, TensorShape[] tfInputShapes) GetInputInfo(IHost host, Session session, string[] inputs)
+        private static (Operation, int) GetOperationFromName(string operation, Session session)
+        {
+            var p = operation.IndexOf(':');
+            if (p != -1 && p != operation.Length - 1)
+            {
+                var op = operation.Substring(0, p);
+                if (int.TryParse(operation.Substring(p + 1), out var idx))
+                {
+                    return (session.graph.OperationByName(op), idx);
+                }
+            }
+            return  (session.graph.OperationByName(operation), 0);
+        }
+
+        internal static (TF_DataType[] tfInputTypes, TensorShape[] tfInputShapes, (Operation, int)[]) GetInputInfo(IHost host, Session session, string[] inputs)
         {
             var tfInputTypes = new TF_DataType[inputs.Length];
             var tfInputShapes = new TensorShape[inputs.Length];
+            var tfInputOperations = new (Operation, int)[inputs.Length];
 
             int index = 0;
             foreach (var input in inputs)
             {
                 host.CheckNonWhiteSpace(input, nameof(inputs));
-                Tensor inputTensor = session.graph.OperationByName(input);
+                (Tensor inputTensor, int inputTensorIndex) = GetOperationFromName(input, session);
+
                 if (inputTensor == null)
                     throw host.ExceptParam(nameof(inputs), $"Input column '{input}' does not exist in the model");
-                var tfInputType = ((Operation)inputTensor).InputType(0);
+                var tfInputType = ((Operation)inputTensor).InputType(index);
                 if (!TensorFlowUtils.IsTypeSupported(tfInputType))
                     throw host.ExceptParam(nameof(session), $"Input type '{tfInputType}' of input column '{input}' is not supported in TensorFlow");
 
                 tfInputTypes[index] = tfInputType;
-                tfInputShapes[index++] = inputTensor.TensorShape;
+                tfInputShapes[index] = inputTensor.TensorShape;
+                tfInputOperations[index] = (inputTensor, inputTensorIndex);
+                index++;
             }
 
-            return (tfInputTypes, tfInputShapes);
+            return (tfInputTypes, tfInputShapes, tfInputOperations);
         }
 
         internal static TensorShape GetTensorShape(TF_Output output, Graph graph, Status status = null)
@@ -606,11 +625,12 @@ namespace Microsoft.ML.Transforms
             return new TensorShape(dims.Select(x => (int)x).ToArray());
         }
 
-        internal static (TF_DataType[] tfOutputTypes, DataViewType[] outputTypes) GetOutputInfo(IHost host, Session session, string[] outputs)
+        internal static (TF_DataType[] tfOutputTypes, DataViewType[] outputTypes, (Operation, int)[]) GetOutputInfo(IHost host, Session session, string[] outputs)
         {
             var tfOutputTypes = new TF_DataType[outputs.Length];
             var outputTypes = new DataViewType[outputs.Length];
             var newNames = new HashSet<string>();
+            var tfOutputOperations = new (Operation, int)[outputs.Length];
 
             for (int i = 0; i < outputs.Length; i++)
             {
@@ -618,12 +638,12 @@ namespace Microsoft.ML.Transforms
                 if (!newNames.Add(outputs[i]))
                     throw host.ExceptParam(nameof(outputs), $"Output column '{outputs[i]}' specified multiple times");
 
-                Tensor outputTensor = session.graph.OperationByName(outputs[i]);
+                (Tensor outputTensor, int outputIndex) = GetOperationFromName(outputs[i], session);
                 if (outputTensor == null)
                     throw host.ExceptParam(nameof(outputs), $"Output column '{outputs[i]}' does not exist in the model");
 
-                var tfOutputType = ((Operation)outputTensor).OutputType(0);
-                var shape = GetTensorShape(new TF_Output((Operation)outputTensor, 0), session.graph);
+                var tfOutputType = ((Operation)outputTensor).OutputType(outputIndex);
+                var shape = GetTensorShape(new TF_Output((Operation)outputTensor, outputIndex), session.graph);
 
                 // The transformer can only retreive the output as fixed length vector with shape of kind [-1, d1, d2, d3, ...]
                 // i.e. the first dimension (if unknown) is assumed to be batch dimension.
@@ -635,9 +655,10 @@ namespace Microsoft.ML.Transforms
                 var type = TensorFlowUtils.Tf2MlNetType(tfOutputType);
                 outputTypes[i] = new VectorDataViewType(type, dims);
                 tfOutputTypes[i] = tfOutputType;
+                tfOutputOperations[i] = (outputTensor, outputIndex);
             }
 
-            return (tfOutputTypes, outputTypes);
+            return (tfOutputTypes, outputTypes, tfOutputOperations);
         }
 
         private protected override IRowMapper MakeRowMapper(DataViewSchema inputSchema) => new Mapper(this, inputSchema);
