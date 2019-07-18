@@ -15,6 +15,7 @@ using Microsoft.ML.Internal.Utilities;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.TensorFlow;
+using NumSharp;
 using Tensorflow;
 using static Microsoft.ML.Transforms.TensorFlow.TensorFlowUtils;
 
@@ -586,6 +587,25 @@ namespace Microsoft.ML.Transforms
             return (tfInputTypes, tfInputShapes);
         }
 
+        internal static TensorShape GetTensorShape(TF_Output output, Graph graph, Status status = null)
+        {
+            if (graph == IntPtr.Zero)
+                new ObjectDisposedException(nameof(graph));
+
+            var cstatus = status == null ? new Status() : status;
+            var n = c_api.TF_GraphGetTensorNumDims(graph, output, cstatus);
+
+            cstatus.Check();
+
+            if (n == -1)
+                return new TensorShape((int[])null);
+
+            var dims = new long[n];
+            c_api.TF_GraphGetTensorShape(graph, output, dims, dims.Length, cstatus);
+            cstatus.Check();
+            return new TensorShape(dims.Select(x => (int)x).ToArray());
+        }
+
         internal static (TF_DataType[] tfOutputTypes, DataViewType[] outputTypes) GetOutputInfo(IHost host, Session session, string[] outputs)
         {
             var tfOutputTypes = new TF_DataType[outputs.Length];
@@ -603,7 +623,7 @@ namespace Microsoft.ML.Transforms
                     throw host.ExceptParam(nameof(outputs), $"Output column '{outputs[i]}' does not exist in the model");
 
                 var tfOutputType = ((Operation)outputTensor).OutputType(0);
-                var shape = outputTensor.TensorShape;
+                var shape = GetTensorShape(new TF_Output((Operation)outputTensor, 0), session.graph);
 
                 // The transformer can only retreive the output as fixed length vector with shape of kind [-1, d1, d2, d3, ...]
                 // i.e. the first dimension (if unknown) is assumed to be batch dimension.
@@ -753,7 +773,7 @@ namespace Microsoft.ML.Transforms
                     var shape = originalShape.Dimensions;
 
                     var colTypeDims = vecType.Dimensions.Select(dim => (int)dim).ToArray();
-                    if (shape == null)
+                    if (shape == null || (shape.Length == 0))
                         _fullySpecifiedShapes[i] = new TensorShape(colTypeDims);
                     else
                     {
@@ -1007,9 +1027,7 @@ namespace Microsoft.ML.Transforms
                 Utils.EnsureSize(ref _denseData, _vBuffer.Length, keepOld: false);
                 _vBuffer.CopyTo(_denseData);
 
-                var tensor = new Tensor(_denseData); //TFTensor.Create(_denseData, _vBuffer.Length, _tfShape);
-                tensor.SetShape(_tfShape);
-                return tensor;
+                return new Tensor(new NDArray(_denseData, _tfShape)); //TFTensor.Create(_denseData, _vBuffer.Length, _tfShape);
             }
 
             public void BufferTrainingData()

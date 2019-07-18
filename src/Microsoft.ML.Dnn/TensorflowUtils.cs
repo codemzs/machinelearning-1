@@ -11,7 +11,6 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.ML.Data;
-using Microsoft.ML.Internal.Utilities;
 using Microsoft.ML.Runtime;
 using NumSharp;
 using Tensorflow;
@@ -30,78 +29,6 @@ namespace Microsoft.ML.Transforms.TensorFlow
         /// Its value states operators that the associated <see cref="DataViewSchema.Column"/>'s generator depends on.
         /// </summary>
         internal const string TensorflowUpstreamOperatorsKind = "TensorflowUpstreamOperators";
-
-        /*internal static DataViewSchema GetModelSchema(IExceptionContext ectx, Graph graph, string opType = null)
-        {
-            var schemaBuilder = new DataViewSchema.Builder();
-            foreach (var op in c_api_util.tf_operations(graph))
-            {
-                if (opType != null && opType != op.OpType)
-                    continue;
-
-                var tfType = op.OutputType(0);
-                // Determine element type in Tensorflow tensor. For example, a vector of floats may get NumberType.R4 here.
-                var mlType = Tf2MlNetTypeOrNull(tfType);
-
-                // If the type is not supported in ML.NET then we cannot represent it as a column in an Schema.
-                // We also cannot output it with a TensorFlowTransform, so we skip it.
-                // Furthermore, operators which have NumOutputs <= 0 needs to be filtered.
-                // The 'GetTensorShape' method crashes TensorFlow runtime
-                // (https://github.com/dotnet/machinelearning/issues/2156) when the operator has no outputs.
-                if (mlType == null || op.NumOutputs <= 0)
-                    continue;
-
-                // Construct the final ML.NET type of a Tensorflow variable.
-                var tensorShape = graph. .GetTensorShape(op[0]).ToIntArray();
-                var columnType = new VectorDataViewType(mlType);
-                if (!(Utils.Size(tensorShape) == 1 && tensorShape[0] <= 0) &&
-                    (Utils.Size(tensorShape) > 0 && tensorShape.Skip(1).All(x => x > 0)))
-                    columnType = new VectorDataViewType(mlType, tensorShape[0] > 0 ? tensorShape : tensorShape.Skip(1).ToArray());
-
-                // There can be at most two metadata fields.
-                //  1. The first field always presents. Its value is this operator's type. For example,
-                //     if an output is produced by an "Softmax" operator, the value of this field should be "Softmax".
-                //  2. The second field stores operators whose outputs are consumed by this operator. In other words,
-                //     these values are names of some upstream operators which should be evaluated before executing
-                //     the current operator. It's possible that one operator doesn't need any input, so this field
-                //     can be missing.
-                var metadataBuilder = new DataViewSchema.Annotations.Builder();
-                // Create the first metadata field.
-                metadataBuilder.Add(TensorflowOperatorTypeKind, TextDataViewType.Instance, (ref ReadOnlyMemory<char> value) => value = op.OpType.AsMemory());
-                if (op.NumInputs > 0)
-                {
-                    // Put upstream operators' names to an array (type: VBuffer) of string (type: ReadOnlyMemory<char>).
-                    VBuffer<ReadOnlyMemory<char>> upstreamOperatorNames = default;
-                    var bufferEditor = VBufferEditor.Create(ref upstreamOperatorNames, op.NumInputs);
-                    for (int i = 0; i < op.NumInputs; ++i)
-                        bufferEditor.Values[i] = c_api.TF_OperationName(op.GetInput(i).oper).GetStr().AsMemory();
-                    upstreamOperatorNames = bufferEditor.Commit(); // Used in metadata's getter.
-
-                    // Create the second metadata field.
-                    metadataBuilder.Add(TensorflowUpstreamOperatorsKind, new VectorDataViewType(TextDataViewType.Instance, op.NumInputs),
-                        (ref VBuffer<ReadOnlyMemory<char>> value) => { upstreamOperatorNames.CopyTo(ref value); });
-                }
-
-                schemaBuilder.AddColumn(op.Name, columnType, metadataBuilder.ToAnnotations());
-            }
-            return schemaBuilder.ToSchema();
-        }
-
-        /// <summary>
-        /// This method retrieves the information about the graph nodes of a TensorFlow model as an <see cref="DataViewSchema"/>.
-        /// For every node in the graph that has an output type that is compatible with the types supported by
-        /// <see cref="TfTransferLearningTransformer"/>, the output schema contains a column with the name of that node, and the
-        /// type of its output (including the item type and the shape, if it is known). Every column also contains metadata
-        /// of kind <see cref="TensorflowOperatorTypeKind"/>, indicating the operation type of the node, and if that node has inputs in the graph,
-        /// it contains metadata of kind <see cref="TensorflowUpstreamOperatorsKind"/>, indicating the names of the input nodes.
-        /// </summary>
-        /// <param name="env">The environment to use.</param>
-        /// <param name="modelPath">Model to load.</param>
-        internal static DataViewSchema GetModelSchema(IHostEnvironment env, string modelPath)
-        {
-            var model = LoadTensorFlowModel(env, modelPath);
-            return GetModelSchema(env, model.Session.graph);
-        }*/
 
         internal static PrimitiveDataViewType Tf2MlNetType(TF_DataType type)
         {
@@ -157,6 +84,26 @@ namespace Microsoft.ML.Transforms.TensorFlow
             {
                 if (!string.IsNullOrEmpty(modelFile))
                     throw ectx.Except($"TensorFlow exception triggered while loading model from '{modelFile}'");
+#pragma warning disable MSML_NoMessagesForLoadContext
+                throw ectx.ExceptDecode(ex, "Tensorflow exception triggered while loading model.");
+#pragma warning restore MSML_NoMessagesForLoadContext
+
+            }
+            return new Session(graph);
+        }
+
+        internal static Session LoadTFSessionByModelFilePath(IExceptionContext ectx, string modelFile)
+        {
+            if (string.IsNullOrEmpty(modelFile))
+                throw ectx.Except($"TensorFlow exception triggered while loading model from '{modelFile}'");
+
+            var graph = new Graph();
+            try
+            {
+                graph.Import(modelFile);
+            }
+            catch (Exception ex)
+            {
 #pragma warning disable MSML_NoMessagesForLoadContext
                 throw ectx.ExceptDecode(ex, "Tensorflow exception triggered while loading model.");
 #pragma warning restore MSML_NoMessagesForLoadContext
@@ -315,8 +262,7 @@ namespace Microsoft.ML.Transforms.TensorFlow
             }
 
             env.CheckUserArg(File.Exists(modelPath), nameof(modelPath));
-            var bytes = File.ReadAllBytes(modelPath);
-            return LoadTFSession(env, bytes, modelPath);
+            return LoadTFSessionByModelFilePath(env, modelPath);
         }
 
         internal static unsafe void FetchData<T>(T[] data, Span<T> result)
@@ -592,11 +538,10 @@ namespace Microsoft.ML.Transforms.TensorFlow
                 FeedItem[] items = new FeedItem[_inputValues.Count];
                 for(int index = 0; index < _inputValues.Count; index++)
                 {
-                    items[index] = new FeedItem(_inputValues[index], new NDArray(_inputValues[index].Data(), _inputValues[index].TensorShape));
+                    items[index] = new FeedItem(_inputValues[index], new NDArray(_inputValues[index].Data<float>(), _inputValues[index].TensorShape));
                 }
 
-                //return _session.run(_inputs.ToArray(), _inputValues.ToArray(), _outputs.ToArray(), _targets.ToArray(), RunMetadata, RunOptions, status);
-                return null;
+                return (Tensor[])_session.run(_targets.ToArray(), items);
             }
 
             /// <summary>

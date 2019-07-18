@@ -34,7 +34,7 @@ namespace Samples.Dynamic
             var idv = mlContext.Data.LoadFromEnumerable(data);
 
             // Create a ML pipeline.
-            var pipeline = mlContext.Model.LoadTensorFlowModel(modelLocation)
+             var pipeline = mlContext.Model.LoadTensorFlowModel(modelLocation)
                 .ScoreTensorFlowModel(
                 new[] { nameof(OutputScores.output) },
                 new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);
