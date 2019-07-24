@@ -368,10 +368,12 @@ namespace Microsoft.ML.Transforms
             {
                 // Initialize all weights: for the module to their pretrained values,
                 // and for the newly added retraining layer to random initial values.
-                new Runner(Session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
 
                 // Add transfer learning layer.
                 AddTransferLearningLayer(options, (int)labelCount);
+
+
+                new Runner(Session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
             }
 
             var index = inputsForTraining.Length - 1;
@@ -422,11 +424,13 @@ namespace Microsoft.ML.Transforms
                 ops = new[] { (IntPtr)TrainStep };
             }
 
+            string checkpoint = @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check";
+            var train_saver = tf.train.Saver();
+            train_saver.save(Session, checkpoint);
+
             // Instantiate the graph.
             var runner = new Runner(Session, tfInputs, tfOutputs, ops);
             var cols = input.Schema.Where(c => inputColIndices.Contains(c.Index));
-
-
 
             for (int epoch = 0; epoch < options.Epoch; epoch++)
             {
@@ -467,8 +471,11 @@ namespace Microsoft.ML.Transforms
                     }
                 }
             }
-            var train_saver = tf.train.Saver();
-            train_saver.save(Session, "check");
+            train_saver.save(Session, checkpoint);
+
+            options.GroundTruthInputTensorName = "GroundTruthInput";
+            options.BottleneckPlaceHolderName = "BottleneckInputPlaceholder";
+
             if (reTrain)
                 UpdateModelOnDisk(options.ModelLocation, options);
             else
@@ -574,7 +581,7 @@ namespace Microsoft.ML.Transforms
 
                 // Now we need to restore the values from the training graph to the eval
                 // graph.
-                tf.train.Saver().restore(evalSess, "check");
+                tf.train.Saver().restore(evalSess, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
 
                 (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
             });
@@ -612,7 +619,7 @@ namespace Microsoft.ML.Transforms
             var graph = sess.graph;
             var output_graph_def = tf.graph_util.convert_variables_to_constants(
                 sess, graph.as_graph_def(), new string[] { options.FinalTensorName });
-            File.WriteAllBytes(options.ModelLocation, output_graph_def.ToByteArray());
+            File.WriteAllBytes(options.ModelLocation + "-1.pb", output_graph_def.ToByteArray());
         }
 
         private void VariableSummaries(RefVariable var)
