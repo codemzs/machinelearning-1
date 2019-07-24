@@ -583,7 +583,7 @@ namespace Microsoft.ML.Transforms
                 // graph.
                 tf.train.Saver().restore(evalSess, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
 
-                (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
+                (evaluationStep, prediction) = (null, null);//AddEvaluationStep(finalTensor, groundTruthInput);
             });
 
             return (evalSess, BottleneckInput, GroundTruthInput, evaluationStep, prediction);
@@ -645,10 +645,10 @@ namespace Microsoft.ML.Transforms
             var (batch_size, bottleneck_tensor_size) = (bottleneckTensor.TensorShape.Dimensions[0], bottleneckTensor.TensorShape.Dimensions[1]);
             with(tf.name_scope("input"), scope =>
             {
-                BottleneckInput = tf.placeholder_with_default(
+                /*BottleneckInput = tf.placeholder_with_default(
                     bottleneckTensor,
                     shape: bottleneckTensor.TensorShape.Dimensions,
-                    name: options.BottleneckPlaceHolderName);
+                    name: options.BottleneckPlaceHolderName);*/
 
                 GroundTruthInput = tf.placeholder(tf.int64, new TensorShape(batch_size), name: options.GroundTruthInputTensorName);
             });
@@ -675,7 +675,7 @@ namespace Microsoft.ML.Transforms
 
                 with(tf.name_scope("Wx_plus_b"), delegate
                 {
-                    logits = tf.matmul(BottleneckInput, layerWeights) + layerBiases;
+                    logits = tf.matmul(bottleneckTensor, layerWeights) + layerBiases;
                     tf.summary.histogram("pre_activations", logits);
                 });
             });

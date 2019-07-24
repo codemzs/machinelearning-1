@@ -36,17 +36,23 @@ namespace Samples.Dynamic
             var idv = mlContext.Data.LoadFromEnumerable(data);
 
             // Create a ML pipeline.
-             var pipeline =
-                 mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
-                .RetrainTensorFlowModel(
-                new[] { nameof(OutputScores.output) },
-                new[] { nameof(TensorData.input) }, "Label", "", "", false, addBatchDimensionInput: true, batchSize: 1);
+            var pipeline =
+                mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta-1.pb", false)
+               .ScoreTensorFlowModel(
+               new[] { nameof(OutputScores.FinalTensor), "resnet_v2_101/SpatialSqueeze" },
+               new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);
+
+            /*var pipeline =
+    mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
+   .RetrainTensorFlowModel(
+   new[] { nameof(OutputScores.output) },
+   new[] { nameof(TensorData.input) }, "Label", "GroundTruthInput", "", reTrain:false, batchSize: 1, addBatchDimensionInput: true);*/
 
             // Run the pipeline and get the transformed values.
             var estimator = pipeline.Fit(idv);
 
-            for (int index = 0; index < 100; index++)
-            {
+            //for (int index = 0; index < 100; index++)
+            //{
                 var transformedValues = estimator.Transform(idv);
 
                 // Retrieve model scores.
@@ -58,14 +64,14 @@ namespace Samples.Dynamic
                 foreach (var prediction in outScores)
                 {
                     int numClasses = 0;
-                    foreach (var classScore in prediction.output.Take(3))
+                    foreach (var classScore in prediction.FinalTensor.Take(3))
                     {
                         Console.WriteLine(
                             $"Class #{numClasses++} score = {classScore}");
                     }
                     Console.WriteLine(new string('-', 10));
                 }
-            }
+            //}
             Console.WriteLine(sw.Elapsed);
             // Results look like below...
             //Class #0 score = -0.8092947
@@ -117,7 +123,12 @@ namespace Samples.Dynamic
         /// </summary>
         class OutputScores
         {
-            public float[] output { get; set; }
+            [ColumnName("resnet_v2_101/SpatialSqueeze")]
+            public float[] squeeze { get; set; }
+            //public float[] output { get; set; }
+            /*public float[] FinalTensor { get; set; }
+            public float[] input { get; set; }*/
+            public float[] FinalTensor { get; set; }
         }
 
         private static string Download(string baseGitPath, string dataFile)

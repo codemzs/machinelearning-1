@@ -264,6 +264,9 @@ namespace Microsoft.ML.Transforms.TensorFlow
         internal static TensorFlowModel LoadTensorFlowModel(IHostEnvironment env, string modelPath, bool metaGraph = false)
         {
             var session = GetSession(env, modelPath, metaGraph);
+            //new Runner(session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
+            //var saver = tf.train.Saver();
+            //saver.restore(session, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
             return new TensorFlowModel(env, session, modelPath);
         }
 
