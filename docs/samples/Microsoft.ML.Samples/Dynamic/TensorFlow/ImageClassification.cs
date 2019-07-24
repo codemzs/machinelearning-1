@@ -43,23 +43,27 @@ namespace Samples.Dynamic
 
             // Run the pipeline and get the transformed values.
             var estimator = pipeline.Fit(idv);
-            var transformedValues = estimator.Transform(idv);
 
-            // Retrieve model scores.
-            var outScores = mlContext.Data.CreateEnumerable<OutputScores>(
-                transformedValues, reuseRowObject: false);
-
-            // Display scores. (for the sake of brevity we display scores of the
-            // first 3 classes)
-            foreach (var prediction in outScores)
+            for (int index = 0; index < 100; index++)
             {
-                int numClasses = 0;
-                foreach (var classScore in prediction.output.Take(3))
+                var transformedValues = estimator.Transform(idv);
+
+                // Retrieve model scores.
+                var outScores = mlContext.Data.CreateEnumerable<OutputScores>(
+                    transformedValues, reuseRowObject: false);
+
+                // Display scores. (for the sake of brevity we display scores of the
+                // first 3 classes)
+                foreach (var prediction in outScores)
                 {
-                    Console.WriteLine(
-                        $"Class #{numClasses++} score = {classScore}");
+                    int numClasses = 0;
+                    foreach (var classScore in prediction.output.Take(3))
+                    {
+                        Console.WriteLine(
+                            $"Class #{numClasses++} score = {classScore}");
+                    }
+                    Console.WriteLine(new string('-', 10));
                 }
-                Console.WriteLine(new string('-', 10));
             }
             Console.WriteLine(sw.Elapsed);
             // Results look like below...

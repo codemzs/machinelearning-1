@@ -17,7 +17,9 @@ using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.TensorFlow;
 using NumSharp;
 using Tensorflow;
+using static Tensorflow.Python;
 using static Microsoft.ML.Transforms.TensorFlow.TensorFlowUtils;
+using Google.Protobuf;
 
 [assembly: LoadableClass(TfTransferLearningTransformer.Summary, typeof(IDataTransform), typeof(TfTransferLearningTransformer),
     typeof(TensorFlowEstimator.Options), typeof(SignatureDataTransform), TfTransferLearningTransformer.UserName, TfTransferLearningTransformer.ShortName)]
@@ -51,6 +53,16 @@ namespace Microsoft.ML.Transforms
         internal readonly TensorShape[] TFInputShapes;
         internal readonly (Operation, int)[] TFInputOperations;
         internal readonly (Operation, int)[] TFOutputOperations;
+        internal Dictionary<string, Operation> OperationCache;
+        internal TF_Output[] TFInputNodes;
+        internal TF_Output[] TFOutputNodes;
+        internal IntPtr[] TFOperations;
+        internal Tensor BottleneckTensor;
+        internal Operation TrainStep;
+        internal Tensor FinalTensor;
+        internal Tensor BottleneckInput;
+        internal Tensor CrossEntropy;
+        internal Tensor GroundTruthInput;
         internal Graph Graph => Session.graph;
 
         internal readonly string[] Inputs;
@@ -229,13 +241,14 @@ namespace Microsoft.ML.Transforms
         }
 
         internal TfTransferLearningTransformer(IHostEnvironment env, TensorFlowEstimator.Options options, TensorFlowModel tensorFlowModel, IDataView input)
-            : this(env, tensorFlowModel.Session, options.OutputColumns, options.InputColumns, TensorFlowUtils.IsSavedModel(env, options.ModelLocation) ? options.ModelLocation : null, false, options.AddBatchDimensionInputs)
+            : this(env, tensorFlowModel.Session, options.OutputColumns, options.InputColumns,
+                  TensorFlowUtils.IsSavedModel(env, options.ModelLocation) ? options.ModelLocation : null,
+                  false, options.AddBatchDimensionInputs, options.BatchSize)
         {
 
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(options, nameof(options));
-
-            if (options.ReTrain)
+            if (options.ReTrain || !string.IsNullOrEmpty(options.LabelColumn))
             {
                 env.CheckValue(input, nameof(input));
 
@@ -243,7 +256,7 @@ namespace Microsoft.ML.Transforms
 
                 if (!TensorFlowUtils.IsSavedModel(env, options.ModelLocation))
                     throw env.ExceptNotSupp("TensorFlowTransform: Re-Training of TensorFlow model is only supported for un-frozen model.");
-                TrainCore(options, input);
+                TrainCore(options, input, options.ReTrain);
             }
         }
 
@@ -317,7 +330,7 @@ namespace Microsoft.ML.Transforms
             return (inputColIndex, isInputVector, tfInputType, tfInputShape);
         }
 
-        private void TrainCore(TensorFlowEstimator.Options options, IDataView input)
+        private void TrainCore(TensorFlowEstimator.Options options, IDataView input, bool reTrain)
         {
             var inputsForTraining = new string[Inputs.Length + 1];
             var inputColIndices = new int[inputsForTraining.Length];
@@ -342,12 +355,65 @@ namespace Microsoft.ML.Transforms
             (inputColIndices[index], isInputVector[index], tfInputTypes[index], tfInputShapes[index]) =
                     GetTrainingInputInfo(inputSchema, options.LabelColumn, inputsForTraining[index], options.BatchSize);
 
-            var fetchList = new List<string>();
-            if (options.LossOperation != null)
-                fetchList.Add(options.LossOperation);
-            if (options.MetricOperation != null)
-                fetchList.Add(options.MetricOperation);
+            var labelColumn = inputSchema.GetColumnOrNull(options.TensorFlowLabel).Value;
+            var labelType = labelColumn.Type;
+            var labelCount = labelType.GetKeyCount();
+            if (labelCount <= 0)
+                throw Host.ExceptSchemaMismatch(nameof(inputSchema), "label", labelColumn.Name, "Key", labelType.ToString());
 
+            if (!reTrain)
+            {
+                // Initialize all weights: for the module to their pretrained values,
+                // and for the newly added retraining layer to random initial values.
+                new Runner(Session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
+
+                // Add transfer learning layer.
+                AddTransferLearningLayer(options, (int)labelCount);
+            }
+
+            // Create graph inputs.
+            Operation labelOp;
+            int labelOpIdx;
+            if (reTrain)
+                (labelOp, labelOpIdx) = GetOperationFromName(options.LabelColumn, Session);
+            else
+                (labelOp, labelOpIdx) = GetOperationFromName(options.GroundTruthInputTensorName, Session);
+
+            var tfInputs = new TF_Output[TFInputNodes.Length + 1];
+            Array.Copy(TFInputNodes, tfInputs, TFInputNodes.Length);
+            tfInputs[TFInputNodes.Length] = new TF_Output(labelOp, labelOpIdx);
+
+            // Create graph outputs.
+            var fetchList = new List<string>();
+            if (reTrain)
+            {
+                if (options.LossOperation != null)
+                    fetchList.Add(options.LossOperation);
+                if (options.MetricOperation != null)
+                    fetchList.Add(options.MetricOperation);
+            }
+            else
+            {
+
+            }
+
+            TF_Output[] tfOutputs = fetchList.Select(x => { var y = GetOperationFromName(x, Session); return new TF_Output(y.Item1, y.Item2); }).ToArray();
+
+            // Create graph operations.
+            IntPtr[] ops = null;
+
+            if (reTrain)
+            {
+                if (options.LearningRateOperation != null)
+                    ops = new[] { c_api.TF_GraphOperationByName(Graph, options.LearningRateOperation) };
+            }
+            else
+            {
+                ops = new[] { (IntPtr)TrainStep };
+            }
+
+            // Instantiate the graph.
+            var runner = new Runner(Session, tfInputs, tfOutputs, ops);
             var cols = input.Schema.Where(c => inputColIndices.Contains(c.Index));
             for (int epoch = 0; epoch < options.Epoch; epoch++)
             {
@@ -374,7 +440,7 @@ namespace Microsoft.ML.Transforms
                             if (((cursor.Position + 1) % options.BatchSize) == 0)
                             {
                                 isDataLeft = false;
-                                var (l, m) = TrainBatch(inputColIndices, inputsForTraining, srcTensorGetters, fetchList, options);
+                                var (l, m) = TrainBatch(inputColIndices, srcTensorGetters, runner);
                                 loss += l;
                                 metric += m;
                             }
@@ -388,28 +454,23 @@ namespace Microsoft.ML.Transforms
                     }
                 }
             }
-            UpdateModelOnDisk(options.ModelLocation, options);
+            if (reTrain)
+                UpdateModelOnDisk(options.ModelLocation, options);
+            else
+                UpdateTransferLearningModelOnDisk(options, (int)labelCount);
         }
 
-        private (float loss, float metric) TrainBatch(int[] inputColIndices,
-            string[] inputsForTraining,
+        private (float loss, float metric) TrainBatch(
+            int[] inputColIndices,
             ITensorValueGetter[] srcTensorGetters,
-            List<string> fetchList,
-            TensorFlowEstimator.Options options)
+            Runner runner)
         {
             float loss = 0;
             float metric = 0;
             for (int i = 0; i < inputColIndices.Length; i++)
             {
-                Runner.AddInput(TFInputOperations[i].Item1, srcTensorGetters[i].GetBufferedBatchTensor());
+                runner.AddInput(i, srcTensorGetters[i].GetBufferedBatchTensor());
             }
-
-            if (options.LearningRateOperation != null)
-                Runner.AddInput(options.LearningRateOperation, new Tensor(options.LearningRate));
-            Runner.AddTarget(options.OptimizationOperation);
-
-            if (fetchList.Count > 0)
-                Runner.Fetch(fetchList.ToArray());
 
             Tensor[] tensor = Runner.Run();
             loss = tensor.Length > 0 ? (float)tensor[0].Data<float>()[0] : 0.0f;
@@ -429,8 +490,10 @@ namespace Microsoft.ML.Transforms
             {
                 // Save the model on disk
                 var path = Path.Combine(modelDir, DefaultModelFileNames.TmpMlnetModel);
-                Runner.AddInput(options.SaveLocationOperation, new Tensor(Encoding.UTF8.GetBytes(path)))
-                        .AddTarget(options.SaveOperation).Run();
+                var input = GetOperationFromName(options.SaveLocationOperation, Session);
+                var runner = new Runner(Session, new[] { new TF_Output(input.Item1, input.Item2) }, null, new[] { c_api.TF_GraphOperationByName(Graph, options.SaveOperation) });
+
+                Runner.AddInput(0, new Tensor(Encoding.UTF8.GetBytes(path))).Run();
 
                 // Preserve original files
                 var variablesPath = Path.Combine(modelDir, DefaultModelFileNames.VariablesFolder);
@@ -477,6 +540,159 @@ namespace Microsoft.ML.Transforms
             {
                 throw Host.ExceptIO(e, "Error serializing TensorFlow retrained model to disk.");
             }
+        }
+
+        private (Session, Tensor, Tensor, Tensor, Tensor) BuildEvaluationSession(TensorFlowEstimator.Options options, int classCount)
+        {
+            // If quantized, we need to create the correct eval graph for exporting.
+            var evalGraph = TensorFlowUtils.LoadMetaGraph(options.ModelLocation);
+            var evalSess = tf.Session(graph: evalGraph);
+            Tensor evaluationStep = null;
+            Tensor prediction = null;
+            Tensor bottleneckTensor = evalGraph.OperationByName(options.BottleneckOperationName);
+
+            with(evalGraph.as_default(), graph =>
+            {
+                // Add the new layer for exporting.
+                var (_, _, bottleneckInput, groundTruthInput, finalTensor) =
+                    AddFinalRetrainOps(classCount, options, bottleneckTensor, false);
+
+                // Now we need to restore the values from the training graph to the eval
+                // graph.
+                tf.train.Saver().restore(evalSess, "checkpoint");
+
+                (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
+            });
+
+            return (evalSess, BottleneckInput, GroundTruthInput, evaluationStep, prediction);
+        }
+
+        private (Tensor, Tensor) AddEvaluationStep(Tensor resultTensor, Tensor groundTruthTensor)
+        {
+            Tensor evaluationStep = null;
+            Tensor correctPrediction = null;
+            Tensor prediction = null;
+
+            with(tf.name_scope("accuracy"), scope =>
+            {
+                with(tf.name_scope("correct_prediction"), delegate
+                {
+                    prediction = tf.argmax(resultTensor, 1);
+                    correctPrediction = tf.equal(prediction, groundTruthTensor);
+                });
+
+                with(tf.name_scope("accuracy"), delegate
+                {
+                    evaluationStep = tf.reduce_mean(tf.cast(correctPrediction, tf.float32));
+                });
+            });
+
+            tf.summary.scalar("accuracy", evaluationStep);
+            return (evaluationStep, prediction);
+        }
+
+        private void UpdateTransferLearningModelOnDisk(TensorFlowEstimator.Options options, int classCount)
+        {
+            var (sess, _, _, _, _) = BuildEvaluationSession(options, classCount);
+            var graph = sess.graph;
+            var output_graph_def = tf.graph_util.convert_variables_to_constants(
+                sess, graph.as_graph_def(), new string[] { options.FinalTensorName });
+            File.WriteAllBytes(options.ModelLocation, output_graph_def.ToByteArray());
+        }
+
+        private void VariableSummaries(RefVariable var)
+        {
+            with(tf.name_scope("summaries"), delegate
+            {
+                var mean = tf.reduce_mean(var);
+                tf.summary.scalar("mean", mean);
+                Tensor stddev = null;
+                with(tf.name_scope("stddev"), delegate
+                {
+                    stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)));
+                });
+                tf.summary.scalar("stddev", stddev);
+                tf.summary.scalar("max", tf.reduce_max(var));
+                tf.summary.scalar("min", tf.reduce_min(var));
+                tf.summary.histogram("histogram", var);
+            });
+        }
+
+        private (Operation, Tensor, Tensor, Tensor, Tensor) AddFinalRetrainOps(int classCount, TensorFlowEstimator.Options options, Tensor bottleneckTensor, bool isTraining)
+        {
+            var (batch_size, bottleneck_tensor_size) = (bottleneckTensor.TensorShape.Dimensions[0], bottleneckTensor.TensorShape.Dimensions[1]);
+            with(tf.name_scope("input"), scope =>
+            {
+                BottleneckInput = tf.placeholder_with_default(
+                    bottleneckTensor,
+                    shape: bottleneckTensor.TensorShape.Dimensions,
+                    name: options.BottleneckPlaceHolderName);
+
+                GroundTruthInput = tf.placeholder(tf.int64, new TensorShape(batch_size), name: options.GroundTruthInputTensorName);
+            });
+
+            // Organizing the following ops so they are easier to see in TensorBoard.
+            string layerName = "final_retrain_ops";
+            Tensor logits = null;
+            with(tf.name_scope(layerName), scope =>
+            {
+                RefVariable layerWeights = null;
+                with(tf.name_scope("weights"), delegate
+                {
+                    var initialValue = tf.truncated_normal(new int[] { bottleneck_tensor_size, classCount }, stddev: 0.001f);
+                    layerWeights = tf.Variable(initialValue, name: "final_weights");
+                    VariableSummaries(layerWeights);
+                });
+
+                RefVariable layerBiases = null;
+                with(tf.name_scope("biases"), delegate
+                {
+                    layerBiases = tf.Variable(tf.zeros(classCount), name: "final_biases");
+                    VariableSummaries(layerBiases);
+                });
+
+                with(tf.name_scope("Wx_plus_b"), delegate
+                {
+                    logits = tf.matmul(BottleneckInput, layerWeights) + layerBiases;
+                    tf.summary.histogram("pre_activations", logits);
+                });
+            });
+
+            FinalTensor = tf.nn.softmax(logits, name: options.FinalTensorName);
+
+            tf.summary.histogram("activations", FinalTensor);
+
+            // If this is an eval graph, we don't need to add loss ops or an optimizer.
+            if (!isTraining)
+                return (null, null, BottleneckInput, GroundTruthInput, FinalTensor);
+
+            Tensor crossEntropyMean = null;
+            with(tf.name_scope("cross_entropy"), delegate
+            {
+                crossEntropyMean = tf.losses.sparse_softmax_cross_entropy(
+                    labels: GroundTruthInput, logits: logits);
+            });
+
+            tf.summary.scalar("cross_entropy", crossEntropyMean);
+
+            with(tf.name_scope("train"), delegate
+            {
+                var optimizer = tf.train.GradientDescentOptimizer(options.LearningRate);
+                TrainStep = optimizer.minimize(crossEntropyMean);
+            });
+
+            return (TrainStep, crossEntropyMean, BottleneckInput, GroundTruthInput,
+                FinalTensor);
+        }
+
+        private void AddTransferLearningLayer(TensorFlowEstimator.Options options, int classCount)
+        {
+            BottleneckTensor = Graph.OperationByName(options.BottleneckOperationName);
+            with(Graph.as_default(), delegate
+            {
+                (TrainStep, CrossEntropy, BottleneckInput, GroundTruthInput, FinalTensor) =
+                    AddFinalRetrainOps(classCount, options, BottleneckTensor, true);
+            });
         }
 
         private static ITensorValueGetter CreateTensorValueGetter<T>(DataViewRow input, bool isVector, int colIndex, TensorShape tfShape)
@@ -545,8 +761,9 @@ namespace Microsoft.ML.Transforms
                 outputs[j] = ctx.LoadNonEmptyString();
         }
 
-        internal TfTransferLearningTransformer(IHostEnvironment env, Session session, string[] outputColumnNames, string[] inputColumnNames, string savedModelPath, bool isTemporarySavedModel, bool addBatchDimensionInput) :
-            base(Contracts.CheckRef(env, nameof(env)).Register(nameof(TfTransferLearningTransformer)))
+        internal TfTransferLearningTransformer(IHostEnvironment env, Session session, string[] outputColumnNames,
+            string[] inputColumnNames, string savedModelPath, bool isTemporarySavedModel,
+            bool addBatchDimensionInput, int batchSize = 1) : base(Contracts.CheckRef(env, nameof(env)).Register(nameof(TfTransferLearningTransformer)))
 
         {
             Host.CheckValue(session, nameof(session));
@@ -554,32 +771,46 @@ namespace Microsoft.ML.Transforms
             Host.CheckNonEmpty(outputColumnNames, nameof(outputColumnNames));
 
             Session = session;
-            Runner = new Runner(session);
             _savedModelPath = savedModelPath;
             _isTemporarySavedModel = isTemporarySavedModel;
             _addBatchDimensionInput = addBatchDimensionInput;
             Inputs = inputColumnNames;
             Outputs = outputColumnNames;
+            OperationCache = new Dictionary<string, Operation>();
 
-            (TFInputTypes, TFInputShapes, TFInputOperations) = GetInputInfo(Host, Session, Inputs);
+            (TFInputTypes, TFInputShapes, TFInputOperations) = GetInputInfo(Host, Session, Inputs, batchSize);
             (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, Outputs);
+
+            TFInputNodes = new TF_Output[Inputs.Length];
+            TFOutputNodes = new TF_Output[Outputs.Length];
+
+            for (int index = 0; index < TFInputOperations.Length; index += 1)
+                TFInputNodes[index] = new TF_Output(TFInputOperations[index].Item1, TFInputOperations[index].Item2);
+
+            for (int index = 0; index < TFOutputOperations.Length; index += 1)
+                TFOutputNodes[index] = new TF_Output(TFOutputOperations[index].Item1, TFOutputOperations[index].Item2);
+
+            Runner = new Runner(session, TFInputNodes, TFOutputNodes, null);
+
         }
 
         private static (Operation, int) GetOperationFromName(string operation, Session session)
         {
             var p = operation.IndexOf(':');
+
             if (p != -1 && p != operation.Length - 1)
             {
                 var op = operation.Substring(0, p);
                 if (int.TryParse(operation.Substring(p + 1), out var idx))
                 {
+
                     return (session.graph.OperationByName(op), idx);
                 }
             }
-            return  (session.graph.OperationByName(operation), 0);
+            return (session.graph.OperationByName(operation), 0);
         }
 
-        internal static (TF_DataType[] tfInputTypes, TensorShape[] tfInputShapes, (Operation, int)[]) GetInputInfo(IHost host, Session session, string[] inputs)
+        internal static (TF_DataType[] tfInputTypes, TensorShape[] tfInputShapes, (Operation, int)[]) GetInputInfo(IHost host, Session session, string[] inputs, int batchSize = 1)
         {
             var tfInputTypes = new TF_DataType[inputs.Length];
             var tfInputShapes = new TensorShape[inputs.Length];
@@ -589,16 +820,17 @@ namespace Microsoft.ML.Transforms
             foreach (var input in inputs)
             {
                 host.CheckNonWhiteSpace(input, nameof(inputs));
-                (Tensor inputTensor, int inputTensorIndex) = GetOperationFromName(input, session);
+                (Operation inputTensor, int inputTensorIndex) = GetOperationFromName(input, session);
 
                 if (inputTensor == null)
                     throw host.ExceptParam(nameof(inputs), $"Input column '{input}' does not exist in the model");
-                var tfInputType = ((Operation)inputTensor).InputType(index);
+
+                TF_DataType tfInputType = inputTensor.OpType == "PlaceHolder" ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(index);
                 if (!TensorFlowUtils.IsTypeSupported(tfInputType))
                     throw host.ExceptParam(nameof(session), $"Input type '{tfInputType}' of input column '{input}' is not supported in TensorFlow");
 
                 tfInputTypes[index] = tfInputType;
-                tfInputShapes[index] = inputTensor.TensorShape;
+                tfInputShapes[index] = ((Tensor)inputTensor).TensorShape;
                 tfInputOperations[index] = (inputTensor, inputTensorIndex);
                 index++;
             }
@@ -617,7 +849,7 @@ namespace Microsoft.ML.Transforms
             cstatus.Check();
 
             if (n == -1)
-                return new TensorShape((int[])null);
+                return new TensorShape(new int[0]);
 
             var dims = new long[n];
             c_api.TF_GraphGetTensorShape(graph, output, dims, dims.Length, cstatus);
@@ -833,7 +1065,7 @@ namespace Microsoft.ML.Transforms
                         var l = new int[_fullySpecifiedShapes[i].NDim + 1];
                         l[0] = 1;
                         for (int ishape = 1; ishape < l.Length; ishape++)
-                            l[ishape] = _fullySpecifiedShapes[i][ishape-1];
+                            l[ishape] = _fullySpecifiedShapes[i][ishape - 1];
                         _fullySpecifiedShapes[i] = new TensorShape(l);
                     }
                 }
@@ -869,6 +1101,7 @@ namespace Microsoft.ML.Transforms
             private Delegate MakeGetter<T>(DataViewRow input, int iinfo, ITensorValueGetter[] srcTensorGetters, string[] activeOutputColNames, OutputCache outputCache)
             {
                 Host.AssertValue(input);
+                _parent.Runner.Fetch(_parent.TFOutputNodes);
                 if (_parent.TFOutputTypes[iinfo] == TF_DataType.TF_STRING)
                 {
                     ValueGetter<VBuffer<T>> valuegetter = (ref VBuffer<T> dst) =>
@@ -910,10 +1143,10 @@ namespace Microsoft.ML.Transforms
                     for (int i = 0; i < _inputColIndices.Length; i++)
                     {
                         var inputName = _parent.Inputs[i];
-                        runner.AddInput(inputName, srcTensorGetters[i].GetTensor());
+                        runner.AddInput(i, srcTensorGetters[i].GetTensor());
                     }
 
-                    var tensors = runner.Fetch(activeOutputColNames).Run();
+                    var tensors = runner.Run();
                     Contracts.Assert(tensors.Length > 0);
 
                     for (int j = 0; j < tensors.Length; j++)
@@ -1183,6 +1416,13 @@ namespace Microsoft.ML.Transforms
             /// </remarks>
             [Argument(ArgumentType.AtMostOnce, HelpText = "Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].", SortOrder = 16)]
             public bool AddBatchDimensionInputs = false;
+
+            public string FinalTensorName = "FinalTensor";
+            public string BottleneckOperationName = "module_apply_default/hub_output/feature_vector/SpatialSqueeze";
+            public string BottleneckPlaceHolderName = "BottleneckInputPlaceholder";
+            public string FinalWeightsName = "final_weights";
+            public string FinalBiasesName = "final_biases";
+            public string GroundTruthInputTensorName = "GroundTruthInput";
         }
 
         private readonly IHost _host;

@@ -78,6 +78,7 @@ namespace Microsoft.ML.Transforms
         /// <param name="tensorFlowLabel">Name of the node in TensorFlow graph that is used as label during training in TensorFlow.
         /// The value of <paramref name="labelColumnName"/> from <see cref="IDataView"/> is fed to this node.</param>
         /// <param name="optimizationOperation">The name of the optimization operation in the TensorFlow graph.</param>
+        /// <param name="reTrain">If set to true the whole model is retrained otherwise transfer learning is done and only the last layer is trained.</param>
         /// <param name="epoch">Number of training iterations.</param>
         /// <param name="batchSize">Number of samples to use for mini-batch training.</param>
         /// <param name="lossOperation">The name of the operation in the TensorFlow graph to compute training loss (Optional).</param>
@@ -89,12 +90,13 @@ namespace Microsoft.ML.Transforms
         /// <remarks>
         /// The support for retraining is experimental.
         /// </remarks>
-        internal TensorFlowEstimator RetrainTensorFlowModel(
+        public TensorFlowEstimator RetrainTensorFlowModel(
             string[] outputColumnNames,
             string[] inputColumnNames,
             string labelColumnName,
             string tensorFlowLabel,
             string optimizationOperation,
+            bool reTrain,
             int epoch = 10,
             int batchSize = 20,
             string lossOperation = null,
@@ -117,7 +119,7 @@ namespace Microsoft.ML.Transforms
                 LearningRateOperation = learningRateOperation,
                 LearningRate = learningRate,
                 BatchSize = batchSize,
-                ReTrain = true,
+                ReTrain = reTrain,
                 AddBatchDimensionInputs = addBatchDimensionInput
             };
             return new TensorFlowEstimator(_env, options, this);
