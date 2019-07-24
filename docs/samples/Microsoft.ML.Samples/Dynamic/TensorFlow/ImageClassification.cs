@@ -36,10 +36,11 @@ namespace Samples.Dynamic
             var idv = mlContext.Data.LoadFromEnumerable(data);
 
             // Create a ML pipeline.
-             var pipeline = mlContext.Model.LoadTensorFlowModel(modelLocation)
-                .ScoreTensorFlowModel(
+             var pipeline =
+                 mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
+                .RetrainTensorFlowModel(
                 new[] { nameof(OutputScores.output) },
-                new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);
+                new[] { nameof(TensorData.input) }, "Label", "", "", false, addBatchDimensionInput: true, batchSize: 1);
 
             // Run the pipeline and get the transformed values.
             var estimator = pipeline.Fit(idv);
@@ -91,6 +92,9 @@ namespace Samples.Dynamic
         {
             [VectorType(imageHeight, imageWidth, numChannels)]
             public float[] input { get; set; }
+            
+
+            public Int64 Label { get; set; }
         }
 
         /// <summary>

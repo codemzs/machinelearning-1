@@ -384,7 +384,8 @@ namespace Microsoft.ML.Transforms.TensorFlow
                 _inputs = inputs;
                 _outputs = outputs;
                 _operations = operations;
-                _inputValues = new IntPtr[_inputs.Length];
+                if (_inputs != null)
+                    _inputValues = new IntPtr[_inputs.Length];
             }
 
             /// <summary>
@@ -453,24 +454,24 @@ namespace Microsoft.ML.Transforms.TensorFlow
                 if (_session == IntPtr.Zero)
                     new ObjectDisposedException(nameof(_session));
 
-                if (_inputs == null)
+                /*if (_inputs == null)
                     throw new ArgumentNullException(nameof(_inputs));
                 if (_inputValues == null)
                     throw new ArgumentNullException(nameof(_inputValues));
                 if (_outputs == null)
-                    throw new ArgumentNullException(nameof(_outputs));
-                int iLen = _inputs.Length;
-                if (iLen != _inputValues.Length)
-                    throw new ArgumentException("inputs and inputValues have different lengths", "inputs");
-                int oLen = _outputs.Length;
+                    throw new ArgumentNullException(nameof(_outputs));*/
+                int iLen = _inputs != null? _inputs.Length : 0;
+                /*if (iLen != _inputValues.Length)
+                    throw new ArgumentException("inputs and inputValues have different lengths", "inputs");*/
+                int oLen = _outputs != null ? _outputs.Length : 0;
 
                 var cstatus = new Status();
 
-                var ovals = new IntPtr[_outputs.Length];
+                var ovals = _outputs != null ? new IntPtr[_outputs.Length] : null; 
 
                 unsafe
                 {
-                    c_api.TF_SessionRun(_session, null, _inputs, _inputValues, _inputValues.Length, _outputs, ovals, oLen, _operations,
+                    c_api.TF_SessionRun(_session, null, _inputs, _inputValues, iLen, _outputs, ovals, oLen, _operations,
                         _operations == null ? 0 : _operations.Length, IntPtr.Zero, new Status());
                 }
 
