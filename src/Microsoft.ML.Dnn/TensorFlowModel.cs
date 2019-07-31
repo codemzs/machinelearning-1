@@ -5,6 +5,7 @@
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Transforms.TensorFlow;
 using Tensorflow;
+using static Microsoft.ML.Transforms.TensorFlowEstimator;
 
 namespace Microsoft.ML.Transforms
 {
@@ -121,6 +122,37 @@ namespace Microsoft.ML.Transforms
                 BatchSize = batchSize,
                 ReTrain = reTrain,
                 AddBatchDimensionInputs = addBatchDimensionInput
+            };
+            return new TensorFlowEstimator(_env, options, this);
+        }
+
+        public TensorFlowEstimator ImageClassification(
+            string featuresColumnName,
+            string labelColumnName,
+            string outputGraphPath = null,
+            string scoreColumnName = "Scores",
+            string predictedLabelColumnName = "PredictedLabel",
+            Architecture arch = Architecture.ResnetV2101,
+            DnnFramework dnnFramework = DnnFramework.Tensorflow,
+            int epoch = 10,
+            int batchSize = 20,
+            float learningRate = 0.01f,
+            bool addBatchDimensionInput = false)
+        {
+            var options = new TensorFlowEstimator.Options()
+            {
+                ModelLocation = ModelPath,
+                InputColumns = new[] { featuresColumnName },
+                OutputColumns = new[] { scoreColumnName, predictedLabelColumnName },
+                LabelColumn = labelColumnName,
+                TensorFlowLabel = labelColumnName,
+                Epoch = epoch,
+                LearningRate = learningRate,
+                BatchSize = batchSize,
+                AddBatchDimensionInputs = addBatchDimensionInput,
+                TransferLearning = true,
+                ScoreColumnName = scoreColumnName,
+                PredictedLabelColumnName = predictedLabelColumnName
             };
             return new TensorFlowEstimator(_env, options, this);
         }
