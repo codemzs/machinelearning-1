@@ -100,7 +100,6 @@ namespace Samples.Dynamic
         {
             [VectorType(imageHeight, imageWidth, numChannels)]
             public float[] input { get; set; }
-            
 
             public Int64 Label { get; set; }
         }
@@ -125,14 +124,8 @@ namespace Samples.Dynamic
         /// </summary>
         class OutputScores
         {
-            //[ColumnName("resnet_v2_101/SpatialSqueeze")]
-            //public float[] squeeze { get; set; }
-            //public float[] output { get; set; }
             public float[] Scores { get; set; }
             public Int64 PredictedLabel { get; set; }
-            //public float[] FinalTensor { get; set; }
-            //public float[] input { get; set; }
-            //public float[] FinalTensor { get; set; }
         }
 
         private static string Download(string baseGitPath, string dataFile)
