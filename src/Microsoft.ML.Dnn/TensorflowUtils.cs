@@ -140,7 +140,7 @@ namespace Microsoft.ML.Transforms.Dnn
             var graph = new Graph();
             var metaGraphDef = new TF_Buffer();
             var status = new Status();
-            var h = c_api.TF_LoadSessionFromSavedModel(sessionOptions.options, IntPtr.Zero, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Tests\netcoreapp2.1\sentiment_model", tags, 1, graph, ref metaGraphDef, status);
+            var h = c_api.TF_LoadSessionFromSavedModel(sessionOptions.options, IntPtr.Zero, exportDirSavedModel, tags, 1, graph, ref metaGraphDef, status);
             return new Session(h);
                 //return Session.FromSavedModel(sessionOptions, null, exportDirSavedModel, tags, graph, metaGraphDef);
 
