@@ -136,13 +136,13 @@ namespace Microsoft.ML.Transforms.Dnn
             env.CheckValue(exportDirSavedModel, nameof(exportDirSavedModel));
             var sessionOptions = new TF_SessionOptions();
             sessionOptions.options = c_api.TF_NewSessionOptions();
-            var tags = new string[] { "serve" };
+             var tags = new string[] { "serve" };
             var graph = new Graph();
-            var metaGraphDef = new TF_Buffer();
+            TF_Buffer metaGraphDef = default;
             var status = new Status();
             var h = c_api.TF_LoadSessionFromSavedModel(sessionOptions.options, IntPtr.Zero, exportDirSavedModel, tags, 1, graph, ref metaGraphDef, status);
-            return new Session(h);
-                //return Session.FromSavedModel(sessionOptions, null, exportDirSavedModel, tags, graph, metaGraphDef);
+           // return new Session(h);
+                return Session.LoadFromSavedModel(exportDirSavedModel);
 
         }
 

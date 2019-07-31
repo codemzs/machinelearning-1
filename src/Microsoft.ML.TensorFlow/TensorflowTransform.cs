@@ -326,7 +326,7 @@ namespace Microsoft.ML.Transforms
                 if (inputTensor == null)
                     throw host.ExceptParam(nameof(inputs), $"Input column '{input}' does not exist in the model");
 
-                TF_DataType tfInputType = inputTensor.OpType == "PlaceHolder" ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(index);
+                TF_DataType tfInputType = string.Compare(inputTensor.OpType, "PlaceHolder", true) == 0 ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(inputTensorIndex);
                 if (!DnnUtils.IsTypeSupported(tfInputType))
                     throw host.ExceptParam(nameof(session), $"Input type '{tfInputType}' of input column '{input}' is not supported in TensorFlow");
 
