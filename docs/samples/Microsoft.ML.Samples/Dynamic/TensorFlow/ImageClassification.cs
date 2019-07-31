@@ -45,7 +45,7 @@ namespace Samples.Dynamic
                new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);*/
 
             var pipeline = mlContext.Transforms.Conversion.MapValueToKey(nameof(TensorData.Label))
-                .Append(mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
+                .Append(mlContext.Model.LoadDnnModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
                 .ImageClassification(nameof(TensorData.input), nameof(TensorData.Label), batchSize: 2, addBatchDimensionInput: true));
 
             // Run the pipeline and get the transformed values.

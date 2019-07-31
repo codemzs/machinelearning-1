@@ -2,9 +2,9 @@
 <doc>
   <members>
 
-    <member name="TensorflowTransformer">
+    <member name="DnnTransformer">
       <summary>
-        The <see cref="TensorFlowTransformer"/> is used in following two scenarios.
+        The <see cref="DnnTransformer"/> is used in following two scenarios.
         <list type="number">
         <item>
           <description>
@@ -20,7 +20,7 @@
       </summary>
       <remarks>
         <para>
-          The TensorFlowTransform extracts specified outputs using a pre-trained <a href="https://www.tensorflow.org">Tensorflow</a> model.
+          The DnnTransform extracts specified outputs using a pre-trained <a href="https://www.tensorflow.org">Tensorflow</a> model.
           Optionally, it can further retrain TensorFlow model on user data to adjust model parameters on the user data ( also know as "Transfer Learning").
         </para>
         <para>
@@ -28,13 +28,13 @@
           For retraining, the transform also requires training related parameters such as the names of optimization operation in the TensorFlow graph, the name of the learning rate operation in the graph and its value, name of the operations in the graph to compute loss and performance metric etc.
         </para>
         <para>
-          This transform requires the <a href="https://dotnet.myget.org/feed/dotnet-core/package/nuget/Microsoft.ML.TensorFlow">Microsoft.ML.TensorFlow</a> nuget to be installed.
-          The TensorFlowTransform has the following assumptions regarding input, output, processing of data, and retraining.
+          This transform requires the <a href="https://dotnet.myget.org/feed/dotnet-core/package/nuget/Microsoft.ML.Dnn">Microsoft.ML.Dnn</a> nuget to be installed.
+          The DnnTransform has the following assumptions regarding input, output, processing of data, and retraining.
         </para>
         <list type="number">
           <item>
             <description>
-              For the input model, currently the TensorFlowTransform supports both the <a href="https://www.tensorflow.org/mobile/prepare_models">Frozen model</a> format and also the <a href="https://www.tensorflow.org/guide/saved_model#build_and_load_a_savedmodel">SavedModel</a> format.
+              For the input model, currently the DnnTransform supports both the <a href="https://www.tensorflow.org/mobile/prepare_models">Frozen model</a> format and also the <a href="https://www.tensorflow.org/guide/saved_model#build_and_load_a_savedmodel">SavedModel</a> format.
               However, retraining of the model is only possible for the <a href="https://www.tensorflow.org/guide/saved_model#build_and_load_a_savedmodel">SavedModel</a> format.
               <a href="https://www.tensorflow.org/guide/checkpoints">Checkpoint</a> format is currently neither supported for scoring nor for retraining due lack of TensorFlow C-API support for loading it.
             </description>
@@ -58,9 +58,6 @@
             <description>Upon success, the transform will introduce a new column in <see cref="IDataView"/> corresponding to each output column specified.</description>
           </item>
         </list>
-        <para>
-            The inputs and outputs of a TensorFlow model can be obtained using the <see cref="TensorFlowModel.GetModelSchema()"/> or <a href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms/README.md#inspecting-graphs">summarize_graph</a> tools.
-        </para>
       </remarks>
     </member>
   </members>

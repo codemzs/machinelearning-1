@@ -3,18 +3,17 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.ML.Runtime;
-using Microsoft.ML.Transforms.TensorFlow;
 using Tensorflow;
-using static Microsoft.ML.Transforms.TensorFlowEstimator;
+using static Microsoft.ML.Transforms.DnnEstimator;
 
 namespace Microsoft.ML.Transforms
 {
     /// <summary>
     /// This class holds the information related to TensorFlow model and session.
     /// It provides some convenient methods to query model schema as well as
-    /// creation of <see cref="TensorFlowEstimator"/> object.
+    /// creation of <see cref="DnnEstimator"/> object.
     /// </summary>
-    public sealed class TensorFlowModel
+    public sealed class DnnModel
     {
         internal Session Session { get; }
         internal string ModelPath { get; }
@@ -22,12 +21,12 @@ namespace Microsoft.ML.Transforms
         private readonly IHostEnvironment _env;
 
         /// <summary>
-        /// Instantiates <see cref="TensorFlowModel"/>.
+        /// Instantiates <see cref="DnnModel"/>.
         /// </summary>
         /// <param name="env">An <see cref="IHostEnvironment"/> object.</param>
         /// <param name="session">TensorFlow session object.</param>
         /// <param name="modelLocation">Location of the model from where <paramref name="session"/> was loaded.</param>
-        internal TensorFlowModel(IHostEnvironment env, Session session, string modelLocation)
+        internal DnnModel(IHostEnvironment env, Session session, string modelLocation)
         {
             Session = session;
             ModelPath = modelLocation;
@@ -48,8 +47,8 @@ namespace Microsoft.ML.Transforms
         /// ]]>
         /// </format>
         /// </example>
-        public TensorFlowEstimator ScoreTensorFlowModel(string outputColumnName, string inputColumnName, bool addBatchDimensionInput = false)
-            => new TensorFlowEstimator(_env, new[] { outputColumnName }, new[] { inputColumnName }, this, addBatchDimensionInput);
+        public DnnEstimator ScoreTensorFlowModel(string outputColumnName, string inputColumnName, bool addBatchDimensionInput = false)
+            => new DnnEstimator(_env, new[] { outputColumnName }, new[] { inputColumnName }, this, addBatchDimensionInput);
 
         /// <summary>
         /// Scores a dataset using a pre-trained TensorFlow model.
@@ -65,13 +64,13 @@ namespace Microsoft.ML.Transforms
         /// ]]>
         /// </format>
         /// </example>
-        public TensorFlowEstimator ScoreTensorFlowModel(string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
-            => new TensorFlowEstimator(_env, outputColumnNames, inputColumnNames, this, addBatchDimensionInput);
+        public DnnEstimator ScoreTensorFlowModel(string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
+            => new DnnEstimator(_env, outputColumnNames, inputColumnNames, this, addBatchDimensionInput);
 
         /// <summary>
         /// Retrain the TensorFlow model on new data.
-        /// The model is not loaded again instead the information contained in <see cref="TensorFlowModel"/> class is reused
-        /// (c.f. <see cref="TensorFlowModel.ModelPath"/> and <see cref="TensorFlowModel.Session"/>).
+        /// The model is not loaded again instead the information contained in <see cref="DnnModel"/> class is reused
+        /// (c.f. <see cref="DnnModel.ModelPath"/> and <see cref="DnnModel.Session"/>).
         /// </summary>
         /// <param name="inputColumnNames"> The names of the model inputs.</param>
         /// <param name="outputColumnNames">The names of the requested model outputs.</param>
@@ -91,7 +90,7 @@ namespace Microsoft.ML.Transforms
         /// <remarks>
         /// The support for retraining is experimental.
         /// </remarks>
-        public TensorFlowEstimator RetrainTensorFlowModel(
+        public DnnEstimator RetrainTensorFlowModel(
             string[] outputColumnNames,
             string[] inputColumnNames,
             string labelColumnName,
@@ -106,7 +105,7 @@ namespace Microsoft.ML.Transforms
             float learningRate = 0.01f,
             bool addBatchDimensionInput = false)
         {
-            var options = new TensorFlowEstimator.Options()
+            var options = new DnnEstimator.Options()
             {
                 ModelLocation = ModelPath,
                 InputColumns = inputColumnNames,
@@ -123,10 +122,10 @@ namespace Microsoft.ML.Transforms
                 ReTrain = reTrain,
                 AddBatchDimensionInputs = addBatchDimensionInput
             };
-            return new TensorFlowEstimator(_env, options, this);
+            return new DnnEstimator(_env, options, this);
         }
 
-        public TensorFlowEstimator ImageClassification(
+        public DnnEstimator ImageClassification(
             string featuresColumnName,
             string labelColumnName,
             string outputGraphPath = null,
@@ -140,7 +139,7 @@ namespace Microsoft.ML.Transforms
             float learningRate = 0.01f,
             bool addBatchDimensionInput = false)
         {
-            var options = new TensorFlowEstimator.Options()
+            var options = new DnnEstimator.Options()
             {
                 ModelLocation = ModelPath,
                 InputColumns = new[] { featuresColumnName },
@@ -156,7 +155,7 @@ namespace Microsoft.ML.Transforms
                 PredictedLabelColumnName = predictedLabelColumnName,
                 CheckpointName = checkpointName
             };
-            return new TensorFlowEstimator(_env, options, this);
+            return new DnnEstimator(_env, options, this);
         }
     }
 }

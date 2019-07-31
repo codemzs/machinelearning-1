@@ -15,7 +15,7 @@ using Microsoft.ML.Runtime;
 using Tensorflow;
 using static Tensorflow.Python;
 
-namespace Microsoft.ML.Transforms.TensorFlow
+namespace Microsoft.ML.Transforms.Dnn
 {
     internal static class TensorFlowUtils
     {
@@ -261,13 +261,13 @@ namespace Microsoft.ML.Transforms.TensorFlow
         /// <param name="env">The environment to use.</param>
         /// <param name="modelPath">The model to load.</param>
         /// <returns></returns>
-        internal static TensorFlowModel LoadTensorFlowModel(IHostEnvironment env, string modelPath, bool metaGraph = false)
+        internal static DnnModel LoadDnnModel(IHostEnvironment env, string modelPath, bool metaGraph = false)
         {
             var session = GetSession(env, modelPath, metaGraph);
             //new Runner(session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
             //var saver = tf.train.Saver();
             //saver.restore(session, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
-            return new TensorFlowModel(env, session, modelPath);
+            return new DnnModel(env, session, modelPath);
         }
 
         internal static Session GetSession(IHostEnvironment env, string modelPath, bool metaGraph = false)
@@ -457,24 +457,13 @@ namespace Microsoft.ML.Transforms.TensorFlow
                 if (_session == IntPtr.Zero)
                     new ObjectDisposedException(nameof(_session));
 
-                /*if (_inputs == null)
-                    throw new ArgumentNullException(nameof(_inputs));
-                if (_inputValues == null)
-                    throw new ArgumentNullException(nameof(_inputValues));
-                if (_outputs == null)
-                    throw new ArgumentNullException(nameof(_outputs));*/
-                int iLen = _inputs != null? _inputs.Length : 0;
-                /*if (iLen != _inputValues.Length)
-                    throw new ArgumentException("inputs and inputValues have different lengths", "inputs");*/
                 int oLen = _outputs != null ? _outputs.Length : 0;
-
                 var cstatus = new Status();
-
-                var ovals = _outputs != null ? new IntPtr[_outputs.Length] : null; 
+                var ovals = _outputs != null ? new IntPtr[_outputs.Length] : null;
 
                 unsafe
                 {
-                    c_api.TF_SessionRun(_session, null, _inputs, _inputValues, iLen, _outputs, ovals, oLen, _operations,
+                    c_api.TF_SessionRun(_session, null, _inputs, _inputValues, _inputs != null ? _inputs.Length : 0, _outputs, ovals, oLen, _operations,
                         _operations == null ? 0 : _operations.Length, IntPtr.Zero, new Status());
                 }
 

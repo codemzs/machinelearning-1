@@ -55,7 +55,7 @@ namespace Samples.Dynamic
             //      - Use it for quering the schema for input and output in the
             //            model
             //      - Use it for prediction in the pipeline.
-            var tensorFlowModel = mlContext.Model.LoadTensorFlowModel(
+            var tensorFlowModel = mlContext.Model.LoadDnnModel(
                 modelLocation);
             /*var schema = tensorFlowModel.GetModelSchema();
             var featuresType = (VectorDataViewType)schema["Features"].Type;
