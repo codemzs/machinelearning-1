@@ -17,7 +17,7 @@ using static Tensorflow.Python;
 
 namespace Microsoft.ML.Transforms.Dnn
 {
-    internal static class TensorFlowUtils
+    internal static class DnnUtils
     {
         /// <summary>
         /// Key to access operator's type (a string) in <see cref="DataViewSchema.Column.Annotations"/>.
@@ -38,7 +38,7 @@ namespace Microsoft.ML.Transforms.Dnn
             return mlNetType;
         }
 
-        private static PrimitiveDataViewType Tf2MlNetTypeOrNull(TF_DataType type)
+        internal static PrimitiveDataViewType Tf2MlNetTypeOrNull(TF_DataType type)
         {
             switch (type)
             {
@@ -113,8 +113,7 @@ namespace Microsoft.ML.Transforms.Dnn
                     graph = LoadMetaGraph(modelFile);
                 else
                 {
-                    graph = new Graph();
-                    graph.Import(modelFile);
+                    graph = Graph.ImportFromPB(modelFile, "");
                 }
             }
             catch (Exception ex)
@@ -129,10 +128,22 @@ namespace Microsoft.ML.Transforms.Dnn
 
         private static Session LoadTFSession(IHostEnvironment env, string exportDirSavedModel)
         {
+            //Contracts.Check(env != null, nameof(env));
+            //env.CheckValue(exportDirSavedModel, nameof(exportDirSavedModel));
+            //return Session.LoadFromSavedModel(exportDirSavedModel);
+
             Contracts.Check(env != null, nameof(env));
             env.CheckValue(exportDirSavedModel, nameof(exportDirSavedModel));
+            var sessionOptions = new TF_SessionOptions();
+            sessionOptions.options = c_api.TF_NewSessionOptions();
+            var tags = new string[] { "serve" };
+            var graph = new Graph();
+            var metaGraphDef = new TF_Buffer();
+            var status = new Status();
+            var h = c_api.TF_LoadSessionFromSavedModel(sessionOptions.options, IntPtr.Zero, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Tests\netcoreapp2.1\sentiment_model", tags, 1, graph, ref metaGraphDef, status);
+            return new Session(h);
+                //return Session.FromSavedModel(sessionOptions, null, exportDirSavedModel, tags, graph, metaGraphDef);
 
-            return Session.LoadFromSavedModel(exportDirSavedModel);
         }
 
         // A TensorFlow frozen model is a single file. An un-frozen (SavedModel) on the other hand has a well-defined folder structure.

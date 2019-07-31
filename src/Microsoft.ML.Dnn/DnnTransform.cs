@@ -18,7 +18,7 @@ using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.Dnn;
 using NumSharp;
 using Tensorflow;
-using static Microsoft.ML.Transforms.Dnn.TensorFlowUtils;
+using static Microsoft.ML.Transforms.Dnn.DnnUtils;
 using static Tensorflow.Python;
 
 [assembly: LoadableClass(DnnTransformer.Summary, typeof(IDataTransform), typeof(DnnTransformer),
@@ -115,7 +115,7 @@ namespace Microsoft.ML.Transforms
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
         internal DnnTransformer(IHostEnvironment env, string modelFile, string outputColumnName, string inputColumnName = null, bool addBatchDimensionInput = false)
-            : this(env, TensorFlowUtils.GetSession(env, modelFile), new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, TensorFlowUtils.IsSavedModel(env, modelFile) ? modelFile : null, false, addBatchDimensionInput)
+            : this(env, DnnUtils.GetSession(env, modelFile), new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, DnnUtils.IsSavedModel(env, modelFile) ? modelFile : null, false, addBatchDimensionInput)
         {
         }
 
@@ -131,7 +131,7 @@ namespace Microsoft.ML.Transforms
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
         internal DnnTransformer(IHostEnvironment env, string modelFile, string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
-            : this(env, TensorFlowUtils.GetSession(env, modelFile), outputColumnNames, inputColumnNames, TensorFlowUtils.IsSavedModel(env, modelFile) ? modelFile : null, false, addBatchDimensionInput)
+            : this(env, DnnUtils.GetSession(env, modelFile), outputColumnNames, inputColumnNames, DnnUtils.IsSavedModel(env, modelFile) ? modelFile : null, false, addBatchDimensionInput)
         {
         }
 
@@ -139,16 +139,16 @@ namespace Microsoft.ML.Transforms
         /// Transform for scoring Tensorflow models. Input data column names/types must exactly match
         /// all model input names. Only the output columns specified will be generated.
         /// This convenience method avoids reloading of TensorFlow model.
-        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
+        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="DnnUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
         /// </summary>
         /// <param name="env">The environment to use.</param>
-        /// <param name="tfModelInfo"> <see cref="DnnModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
+        /// <param name="tfModelInfo"> <see cref="DnnModel"/> object created with <see cref="DnnUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
         /// <param name="outputColumnName">The output columns to generate. Names must match model specifications. Data types are inferred from model.</param>
         /// <param name="inputColumnName">The name of the input data columns. Must match model's input names. If set to <see langword="null"/>, the value of the <paramref name="outputColumnName"/> will be used as source.</param>
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
         internal DnnTransformer(IHostEnvironment env, DnnModel tfModelInfo, string outputColumnName, string inputColumnName = null, bool addBatchDimensionInput = false)
-            : this(env, tfModelInfo.Session, new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, TensorFlowUtils.IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
+            : this(env, tfModelInfo.Session, new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, DnnUtils.IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
         {
         }
 
@@ -156,16 +156,16 @@ namespace Microsoft.ML.Transforms
         /// Transform for scoring Tensorflow models. Input data column names/types must exactly match
         /// all model input names. Only the output columns specified will be generated.
         /// This convenience method avoids reloading of TensorFlow model.
-        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
+        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="DnnUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
         /// </summary>
         /// <param name="env">The environment to use.</param>
-        /// <param name="tfModelInfo"> <see cref="DnnModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
+        /// <param name="tfModelInfo"> <see cref="DnnModel"/> object created with <see cref="DnnUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
         /// <param name="inputColumnNames">The name of the input data columns. Must match model's input names.</param>
         /// <param name="outputColumnNames">The output columns to generate. Names must match model specifications. Data types are inferred from model.</param>
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
         internal DnnTransformer(IHostEnvironment env, DnnModel tfModelInfo, string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
-            : this(env, tfModelInfo.Session, outputColumnNames, inputColumnNames, TensorFlowUtils.IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
+            : this(env, tfModelInfo.Session, outputColumnNames, inputColumnNames, DnnUtils.IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
         {
         }
 
@@ -192,11 +192,11 @@ namespace Microsoft.ML.Transforms
                 byte[] modelBytes = null;
                 if (!ctx.TryLoadBinaryStream("TFModel", r => modelBytes = r.ReadByteArray()))
                     throw env.ExceptDecode();
-                return new DnnTransformer(env, TensorFlowUtils.LoadTFSession(env, modelBytes), outputs, inputs, null, false, addBatchDimensionInput);
+                return new DnnTransformer(env, DnnUtils.LoadTFSession(env, modelBytes), outputs, inputs, null, false, addBatchDimensionInput);
             }
 
             var tempDirPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), nameof(DnnTransformer) + "_" + Guid.NewGuid()));
-            TensorFlowUtils.CreateFolderWithAclIfNotExists(env, tempDirPath);
+            DnnUtils.CreateFolderWithAclIfNotExists(env, tempDirPath);
             try
             {
                 var load = ctx.TryLoadBinaryStream("TFSavedModel", br =>
@@ -211,7 +211,7 @@ namespace Microsoft.ML.Transforms
                         string fullFileDir = Path.GetDirectoryName(fullFilePath);
                         if (fullFileDir != tempDirPath)
                         {
-                            TensorFlowUtils.CreateFolderWithAclIfNotExists(env, fullFileDir);
+                            DnnUtils.CreateFolderWithAclIfNotExists(env, fullFileDir);
                         }
                         using (var fs = new FileStream(fullFilePath, FileMode.Create, FileAccess.Write))
                         {
@@ -221,11 +221,11 @@ namespace Microsoft.ML.Transforms
                     }
                 });
 
-                return new DnnTransformer(env, TensorFlowUtils.GetSession(env, tempDirPath), outputs, inputs, tempDirPath, true, addBatchDimensionInput);
+                return new DnnTransformer(env, DnnUtils.GetSession(env, tempDirPath), outputs, inputs, tempDirPath, true, addBatchDimensionInput);
             }
             catch (Exception)
             {
-                TensorFlowUtils.DeleteFolderWithRetries(env, tempDirPath);
+                DnnUtils.DeleteFolderWithRetries(env, tempDirPath);
                 throw;
             }
         }
@@ -243,13 +243,13 @@ namespace Microsoft.ML.Transforms
         }
 
         internal DnnTransformer(IHostEnvironment env, DnnEstimator.Options options, IDataView input)
-            : this(env, options, TensorFlowUtils.LoadDnnModel(env, options.ModelLocation), input)
+            : this(env, options, DnnUtils.LoadDnnModel(env, options.ModelLocation), input)
         {
         }
 
         internal DnnTransformer(IHostEnvironment env, DnnEstimator.Options options, DnnModel tensorFlowModel, IDataView input, IDataView validationSet = null)
             : this(env, tensorFlowModel.Session, options.OutputColumns, options.InputColumns,
-                  TensorFlowUtils.IsSavedModel(env, options.ModelLocation) ? options.ModelLocation : null,
+                  DnnUtils.IsSavedModel(env, options.ModelLocation) ? options.ModelLocation : null,
                   false, options.AddBatchDimensionInputs, options.BatchSize, options, input)
         {
             Contracts.CheckValue(env, nameof(env));
@@ -261,7 +261,7 @@ namespace Microsoft.ML.Transforms
                 if (options.ReTrain)
                     CheckTrainingParameters(options);
 
-                if (options.ReTrain && !TensorFlowUtils.IsSavedModel(env, options.ModelLocation))
+                if (options.ReTrain && !DnnUtils.IsSavedModel(env, options.ModelLocation))
                     throw env.ExceptNotSupp("TensorFlowTransform: Re-Training of TensorFlow model is only supported for un-frozen model.");
 
                 TrainCore(options, input, validationSet);
@@ -343,7 +343,7 @@ namespace Microsoft.ML.Transforms
                 tfInputShape = new TensorShape(newShape);
             }
 
-            var expectedType = TensorFlowUtils.Tf2MlNetType(tfInputType);
+            var expectedType = DnnUtils.Tf2MlNetType(tfInputType);
             var actualType = type.GetItemType().RawType;
             if (type is KeyDataViewType && actualType == typeof(UInt32))
                 actualType = typeof(Int64);
@@ -653,7 +653,7 @@ namespace Microsoft.ML.Transforms
                 }
 
                 if (tmpParamDir != null && tmpParamDir.Length > 0)
-                    TensorFlowUtils.DeleteFolderWithRetries(Host, tmpParamDir[0]);
+                    DnnUtils.DeleteFolderWithRetries(Host, tmpParamDir[0]);
             }
             catch (Exception e)
             {
@@ -663,7 +663,7 @@ namespace Microsoft.ML.Transforms
 
         private (Session, Tensor, Tensor, Tensor) BuildEvaluationSession(DnnEstimator.Options options, int classCount)
         {
-            var evalGraph = TensorFlowUtils.LoadMetaGraph(options.ModelLocation);
+            var evalGraph = DnnUtils.LoadMetaGraph(options.ModelLocation);
             var evalSess = tf.Session(graph: evalGraph);
             Tensor evaluationStep = null;
             Tensor prediction = null;
@@ -807,7 +807,7 @@ namespace Microsoft.ML.Transforms
 
         private static ITensorValueGetter CreateTensorValueGetter(DataViewRow input, TF_DataType tfType, bool isVector, int colIndex, TensorShape tfShape)
         {
-            var type = TensorFlowUtils.Tf2MlNetType(tfType);
+            var type = DnnUtils.Tf2MlNetType(tfType);
             if (input.Schema[colIndex].Type is KeyDataViewType && type.RawType == typeof(Int64))
                 return Utils.MarshalInvoke(CreateTensorValueGetter<int>, typeof(UInt32), input, isVector, colIndex, tfShape, true);
 
@@ -965,7 +965,7 @@ namespace Microsoft.ML.Transforms
                     throw host.ExceptParam(nameof(inputs), $"Input column '{input}' does not exist in the model");
 
                 TF_DataType tfInputType = inputTensor.OpType == "PlaceHolder" ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(index);
-                if (!TensorFlowUtils.IsTypeSupported(tfInputType))
+                if (!DnnUtils.IsTypeSupported(tfInputType))
                     throw host.ExceptParam(nameof(session), $"Input type '{tfInputType}' of input column '{input}' is not supported in TensorFlow");
 
                 tfInputTypes[index] = tfInputType;
@@ -1026,11 +1026,11 @@ namespace Microsoft.ML.Transforms
                 if (dims == null || dims.Length == 0)
                 {
                     dims = new[] { 1 };
-                    outputTypes[i] = TensorFlowUtils.Tf2MlNetType(tfOutputType);
+                    outputTypes[i] = DnnUtils.Tf2MlNetType(tfOutputType);
                 }
                 else
                 {
-                    var type = TensorFlowUtils.Tf2MlNetType(tfOutputType);
+                    var type = DnnUtils.Tf2MlNetType(tfOutputType);
                     outputTypes[i] = new VectorDataViewType(type, dims);
                 }
 
@@ -1134,7 +1134,7 @@ namespace Microsoft.ML.Transforms
             {
                 if (!string.IsNullOrEmpty(_savedModelPath) && _isTemporarySavedModel)
                 {
-                    TensorFlowUtils.DeleteFolderWithRetries(Host, _savedModelPath);
+                    DnnUtils.DeleteFolderWithRetries(Host, _savedModelPath);
                 }
             }
         }
@@ -1167,7 +1167,7 @@ namespace Microsoft.ML.Transforms
                     if (!_isInputVector[i])
                         throw Host.Except("Non-vector columns are not supported and should be loaded as vector columns of size 1");
                     vecType = (VectorDataViewType)type;
-                    var expectedType = TensorFlowUtils.Tf2MlNetType(_parent.TFInputTypes[i]);
+                    var expectedType = DnnUtils.Tf2MlNetType(_parent.TFInputTypes[i]);
                     if (type.GetItemType() != expectedType)
                         throw Host.ExceptSchemaMismatch(nameof(inputSchema), "input", _parent.Inputs[i], expectedType.ToString(), type.ToString());
                     var originalShape = _parent.TFInputShapes[i];
@@ -1240,7 +1240,7 @@ namespace Microsoft.ML.Transforms
                 var outputCache = new OutputCache();
                 var activeOutputColNames = _parent.Outputs.Where((x, i) => activeOutput(i)).ToArray();
 
-                var type = TensorFlowUtils.Tf2MlNetType(_parent.TFOutputTypes[iinfo]).RawType;
+                var type = DnnUtils.Tf2MlNetType(_parent.TFOutputTypes[iinfo]).RawType;
                 Host.Assert(type == _parent.OutputTypes[iinfo].GetItemType().RawType);
                 var srcTensorGetters = GetTensorValueGetters(input, _inputColIndices, _isInputVector, _parent.TFInputTypes, _fullySpecifiedShapes);
                 return Utils.MarshalInvoke(MakeGetter<int>, type, input, iinfo, srcTensorGetters, activeOutputColNames, outputCache);
@@ -1274,7 +1274,7 @@ namespace Microsoft.ML.Transforms
                             var tensorSize = tensor.TensorShape.Dimensions.Where(x => x > 0).Aggregate((x, y) => x * y);
 
                             var editor = VBufferEditor.Create(ref dst, (int)tensorSize);
-                            TensorFlowUtils.FetchStringData(tensor, editor.Values);
+                            DnnUtils.FetchStringData(tensor, editor.Values);
                             dst = editor.Commit();
                         };
                         return valuegetter;
@@ -1290,7 +1290,7 @@ namespace Microsoft.ML.Transforms
 
                             var editor = VBufferEditor.Create(ref dst, (int)tensorSize);
 
-                            TensorFlowUtils.FetchData<T>(tensor.Data<T>(), editor.Values);
+                            DnnUtils.FetchData<T>(tensor.Data<T>(), editor.Values);
                             dst = editor.Commit();
                         };
                         return valuegetter;
@@ -1659,7 +1659,7 @@ namespace Microsoft.ML.Transforms
 
         [BestFriend]
         internal DnnEstimator(IHostEnvironment env, string[] outputColumnNames, string[] inputColumnNames, string modelLocation, bool addBatchDimensionInput)
-            : this(env, outputColumnNames, inputColumnNames, TensorFlowUtils.LoadDnnModel(env, modelLocation), addBatchDimensionInput)
+            : this(env, outputColumnNames, inputColumnNames, DnnUtils.LoadDnnModel(env, modelLocation), addBatchDimensionInput)
         {
         }
 
@@ -1669,7 +1669,7 @@ namespace Microsoft.ML.Transforms
         }
 
         internal DnnEstimator(IHostEnvironment env, Options options)
-            : this(env, options, TensorFlowUtils.LoadDnnModel(env, options.ModelLocation))
+            : this(env, options, DnnUtils.LoadDnnModel(env, options.ModelLocation))
         {
         }
 
@@ -1713,7 +1713,7 @@ namespace Microsoft.ML.Transforms
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input);
                 if (!(col.Kind == SchemaShape.Column.VectorKind.Vector))
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, "vector", col.GetTypeString());
-                var expectedType = TensorFlowUtils.Tf2MlNetType(_tfInputTypes[i]);
+                var expectedType = DnnUtils.Tf2MlNetType(_tfInputTypes[i]);
                 if (col.ItemType != expectedType)
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, expectedType.ToString(), col.ItemType.ToString());
             }
@@ -1736,7 +1736,7 @@ namespace Microsoft.ML.Transforms
             {
                 _transformer = _options.ReTrain || _options.TransferLearning ? new DnnTransformer(_host, _options, _tensorFlowModel, input) :
                     new DnnTransformer(_host, _tensorFlowModel.Session, _options.OutputColumns, _options.InputColumns,
-                    TensorFlowUtils.IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs);
+                    DnnUtils.IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs);
             }
             // Validate input schema.
             _transformer.GetOutputSchema(input.Schema);
@@ -1753,7 +1753,7 @@ namespace Microsoft.ML.Transforms
             {
                 _transformer = _options.ReTrain || _options.TransferLearning ? new DnnTransformer(_host, _options, _tensorFlowModel, input, validationSet) :
                     new DnnTransformer(_host, _tensorFlowModel.Session, _options.OutputColumns, _options.InputColumns,
-                    TensorFlowUtils.IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs);
+                    DnnUtils.IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs);
             }
 
             // Validate input schema.

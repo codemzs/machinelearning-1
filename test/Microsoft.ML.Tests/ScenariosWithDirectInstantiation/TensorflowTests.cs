@@ -551,7 +551,7 @@ namespace Microsoft.ML.Scenarios
 
                 var pipe = mlContext.Transforms.Categorical.OneHotEncoding("OneHotLabel", "Label")
                     .Append(mlContext.Transforms.Normalize(new NormalizingEstimator.MinMaxColumnOptions("Features", "Placeholder")))
-                    .Append(mlContext.Model.LoadTensorFlowModel(model_location).RetrainTensorFlowModel(
+                    .Append(mlContext.Model.LoadDnnModel(model_location).RetrainTensorFlowModel(
                         inputColumnNames: new[] { "Features" },
                         outputColumnNames: new[] { "Prediction", "b" },
                         labelColumnName: "OneHotLabel",
@@ -664,7 +664,7 @@ namespace Microsoft.ML.Scenarios
                 }
 
                 var pipe = mlContext.Transforms.CopyColumns("Features", "Placeholder")
-                    .Append(mlContext.Model.LoadTensorFlowModel(modelLocation).RetrainTensorFlowModel(
+                    .Append(mlContext.Model.LoadDnnModel(modelLocation).RetrainTensorFlowModel(
                         inputColumnNames: new[] { "Features" },
                         outputColumnNames: new[] { "Prediction" },
                         labelColumnName: "TfLabel",

@@ -96,7 +96,6 @@ namespace Microsoft.ML.Transforms
             string labelColumnName,
             string tensorFlowLabel,
             string optimizationOperation,
-            bool reTrain,
             int epoch = 10,
             int batchSize = 20,
             string lossOperation = null,
@@ -119,8 +118,8 @@ namespace Microsoft.ML.Transforms
                 LearningRateOperation = learningRateOperation,
                 LearningRate = learningRate,
                 BatchSize = batchSize,
-                ReTrain = reTrain,
-                AddBatchDimensionInputs = addBatchDimensionInput
+                AddBatchDimensionInputs = addBatchDimensionInput,
+                ReTrain = true
             };
             return new DnnEstimator(_env, options, this);
         }

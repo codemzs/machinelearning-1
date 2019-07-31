@@ -25,6 +25,6 @@ namespace Microsoft.ML
         /// </format>
         /// </example>
         public static DnnModel LoadDnnModel(this ModelOperationsCatalog catalog, string modelLocation, bool metaGraph = false)
-            => TensorFlowUtils.LoadDnnModel(CatalogUtils.GetEnvironment(catalog), modelLocation, metaGraph);
+            => DnnUtils.LoadDnnModel(CatalogUtils.GetEnvironment(catalog), modelLocation, metaGraph);
     }
 }
