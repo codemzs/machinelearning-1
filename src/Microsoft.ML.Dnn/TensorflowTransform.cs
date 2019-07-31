@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Google.Protobuf;
 using Microsoft.ML;
 using Microsoft.ML.CommandLine;
 using Microsoft.ML.Data;
@@ -17,9 +18,8 @@ using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.TensorFlow;
 using NumSharp;
 using Tensorflow;
-using static Tensorflow.Python;
 using static Microsoft.ML.Transforms.TensorFlow.TensorFlowUtils;
-using Google.Protobuf;
+using static Tensorflow.Python;
 
 [assembly: LoadableClass(TfTransferLearningTransformer.Summary, typeof(IDataTransform), typeof(TfTransferLearningTransformer),
     typeof(TensorFlowEstimator.Options), typeof(SignatureDataTransform), TfTransferLearningTransformer.UserName, TfTransferLearningTransformer.ShortName)]
@@ -66,8 +66,9 @@ namespace Microsoft.ML.Transforms
         internal Tensor Prediction;
         readonly int ClassCount;
         readonly string[] ClassNames;
+        internal readonly string CheckpointPath;
         internal DataViewSchema.Column LabelColumn;
-
+        internal readonly string BottleneckOperationName;
         internal Graph Graph => Session.graph;
 
         internal readonly string[] Inputs;
@@ -75,7 +76,7 @@ namespace Microsoft.ML.Transforms
         internal readonly string[] NonTFOutputs;
 
         internal static int BatchSize = 1;
-        internal const string Summary = "Transforms the data using the TensorFlow model.";
+        internal const string Summary = "Trains DDN models.";
         internal const string UserName = "TensorFlowTransform";
         internal const string ShortName = "TFTransform";
         internal const string LoaderSignature = "TensorFlowTransform";
@@ -344,7 +345,7 @@ namespace Microsoft.ML.Transforms
 
             var expectedType = TensorFlowUtils.Tf2MlNetType(tfInputType);
             var actualType = type.GetItemType().RawType;
-            if (type is KeyDataViewType && actualType == typeof(UInt64))
+            if (type is KeyDataViewType && actualType == typeof(UInt32))
                 actualType = typeof(Int64);
 
             if (actualType != expectedType.RawType)
@@ -397,7 +398,7 @@ namespace Microsoft.ML.Transforms
             }
 
             var merged = tf.summary.merge_all();
-            var train_writer = tf.summary.FileWriter(Path.Combine(Directory.GetCurrentDirectory(), "train"), Session.graph);
+            var trainWriter = tf.summary.FileWriter(Path.Combine(Directory.GetCurrentDirectory(), "train"), Session.graph);
             TF_Output[] tfOutputs = fetchList.Select(x => { var y = GetOperationFromName(x, Session); return new TF_Output(y.Item1, y.Item2); }).ToArray();
 
             // Create graph operations.
@@ -407,10 +408,9 @@ namespace Microsoft.ML.Transforms
                 ops = new[] { c_api.TF_GraphOperationByName(Graph, options.LearningRateOperation) };
             else
                 ops = new[] { (IntPtr)TrainStep };
-
-            string checkpoint = @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check";
+            
             var trainSaver = tf.train.Saver();
-            trainSaver.save(Session, checkpoint);
+            trainSaver.save(Session, CheckpointPath);
 
             // Instantiate the graph.
             var runner = new Runner(Session, tfInputs, new[] { merged._as_tf_output() }, ops);
@@ -497,6 +497,7 @@ namespace Microsoft.ML.Transforms
                         float accuracy = 0;
                         float crossEntropy = 0;
                         bool isDataLeft = false;
+                        int batch = 0;
                         using (var ch = Host.Start("Test TensorFlow model..."))
                         using (var pch = Host.StartProgressChannel("TensorFlow testing progress..."))
                         {
@@ -516,6 +517,7 @@ namespace Microsoft.ML.Transforms
                                     var (acc, ce) = ExecuteGraphAndRetrieveMetrics(inputColIndices, srcTensorGetters, testSetRunner);
                                     accuracy += acc;
                                     crossEntropy += ce;
+                                    batch++;
                                 }
                             }
                             if (isDataLeft)
@@ -523,8 +525,8 @@ namespace Microsoft.ML.Transforms
                                 isDataLeft = false;
                                 ch.Warning("Not training on the last batch. The batch size is less than {0}.", options.BatchSize);
                             }
-                            pch.Checkpoint(new double?[] { accuracy / (epoch + 1), crossEntropy / (epoch + 1) });
-                            ch.Info(MessageSensitivity.None, $"Accuracy: {accuracy / (epoch + 1)}, Cross-Entropy: {crossEntropy / (epoch + 1)}");
+                            pch.Checkpoint(new double?[] { accuracy / batch, crossEntropy / batch });
+                            ch.Info(MessageSensitivity.None, $"Accuracy: {accuracy / batch}, Cross-Entropy: {crossEntropy / batch}");
                         }
                     }
 
@@ -537,6 +539,7 @@ namespace Microsoft.ML.Transforms
 
                             float accuracy = 0;
                             bool isDataLeft = false;
+                            int batch = 0;
                             using (var ch = Host.Start("Test TensorFlow model with validation set..."))
                             using (var pch = Host.StartProgressChannel("TensorFlow validation progress..."))
                             {
@@ -555,6 +558,7 @@ namespace Microsoft.ML.Transforms
                                         isDataLeft = false;
                                         var (acc, _) = ExecuteGraphAndRetrieveMetrics(inputColIndices, srcTensorGetters, validationSetRunner);
                                         accuracy += acc;
+                                        batch++;
                                     }
                                 }
                                 if (isDataLeft)
@@ -562,14 +566,14 @@ namespace Microsoft.ML.Transforms
                                     isDataLeft = false;
                                     ch.Warning("Not training on the last batch. The batch size is less than {0}.", options.BatchSize);
                                 }
-                                pch.Checkpoint(new double?[] { accuracy / (epoch + 1) });
+                                pch.Checkpoint(new double?[] { accuracy / batch });
                             }
                         }
                     }
                 }
             }
 
-            trainSaver.save(Session, checkpoint);
+            trainSaver.save(Session, CheckpointPath);
 
             if (options.ReTrain)
                 UpdateModelOnDisk(options.ModelLocation, options);
@@ -659,22 +663,16 @@ namespace Microsoft.ML.Transforms
 
         private (Session, Tensor, Tensor, Tensor) BuildEvaluationSession(TensorFlowEstimator.Options options, int classCount)
         {
-            // If quantized, we need to create the correct eval graph for exporting.
             var evalGraph = TensorFlowUtils.LoadMetaGraph(options.ModelLocation);
             var evalSess = tf.Session(graph: evalGraph);
             Tensor evaluationStep = null;
             Tensor prediction = null;
-            Tensor bottleneckTensor = evalGraph.OperationByName(options.BottleneckOperationName);
+            Tensor bottleneckTensor = evalGraph.OperationByName(BottleneckOperationName);
 
             with(evalGraph.as_default(), graph =>
             {
-                // Add the new layer for exporting.
                 var (_, _, groundTruthInput, finalTensor) = AddFinalRetrainOps(classCount, options, bottleneckTensor, false);
-
-                // Now we need to restore the values from the training graph to the eval
-                // graph.
-                tf.train.Saver().restore(evalSess, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
-
+                tf.train.Saver().restore(evalSess, Path.Combine(Directory.GetCurrentDirectory(), CheckpointPath));
                 (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
             });
 
@@ -708,9 +706,9 @@ namespace Microsoft.ML.Transforms
         {
             var (sess, _, _, _) = BuildEvaluationSession(options, classCount);
             var graph = sess.graph;
-            var output_graph_def = tf.graph_util.convert_variables_to_constants(
+            var outputGraphDef = tf.graph_util.convert_variables_to_constants(
                 sess, graph.as_graph_def(), new string[] { SoftMaxTensor.name.Split(':')[0] });
-            File.WriteAllBytes(options.ModelLocation + "-1.pb", output_graph_def.ToByteArray());
+            File.WriteAllBytes(CheckpointPath + ".pb", outputGraphDef.ToByteArray());
         }
 
         private void VariableSummaries(RefVariable var)
@@ -737,15 +735,9 @@ namespace Microsoft.ML.Transforms
             var (batch_size, bottleneck_tensor_size) = (bottleneckTensor.TensorShape.Dimensions[0], bottleneckTensor.TensorShape.Dimensions[1]);
             with(tf.name_scope("input"), scope =>
             {
-                /*BottleneckInput = tf.placeholder_with_default(
-                    bottleneckTensor,
-                    shape: bottleneckTensor.TensorShape.Dimensions,
-                    name: options.BottleneckPlaceHolderName);*/
-
                 LabelTensor = tf.placeholder(tf.int64, new TensorShape(batch_size), name: options.LabelColumn);
             });
 
-            // Organizing the following ops so they are easier to see in TensorBoard.
             string layerName = "final_retrain_ops";
             Tensor logits = null;
             with(tf.name_scope(layerName), scope =>
@@ -775,8 +767,6 @@ namespace Microsoft.ML.Transforms
             SoftMaxTensor = tf.nn.softmax(logits, name: options.ScoreColumnName);
 
             tf.summary.histogram("activations", SoftMaxTensor);
-
-            // If this is an eval graph, we don't need to add loss ops or an optimizer.
             if (!isTraining)
                 return (null, null, LabelTensor, SoftMaxTensor);
 
@@ -800,7 +790,7 @@ namespace Microsoft.ML.Transforms
 
         private void AddTransferLearningLayer(TensorFlowEstimator.Options options, int classCount)
         {
-            BottleneckTensor = Graph.OperationByName(options.BottleneckOperationName);
+            BottleneckTensor = Graph.OperationByName(BottleneckOperationName);
             with(Graph.as_default(), delegate
             {
                 (TrainStep, CrossEntropy, LabelTensor, SoftMaxTensor) =
@@ -819,7 +809,7 @@ namespace Microsoft.ML.Transforms
         {
             var type = TensorFlowUtils.Tf2MlNetType(tfType);
             if (input.Schema[colIndex].Type is KeyDataViewType && type.RawType == typeof(Int64))
-                return Utils.MarshalInvoke(CreateTensorValueGetter<int>, typeof(UInt64), input, isVector, colIndex, tfShape, true);
+                return Utils.MarshalInvoke(CreateTensorValueGetter<int>, typeof(UInt32), input, isVector, colIndex, tfShape, true);
 
             return Utils.MarshalInvoke(CreateTensorValueGetter<int>, type.RawType, input, isVector, colIndex, tfShape, false);
         }
@@ -904,6 +894,14 @@ namespace Microsoft.ML.Transforms
                     throw Host.ExceptSchemaMismatch(nameof(inputSchema), "label", labelColumn.Name, "Key", labelType.ToString());
 
                 ClassCount = labelCount == 1 ? 2 : (int)labelCount;
+                CheckpointPath = Path.Combine(Directory.GetCurrentDirectory(), options.ModelLocation + options.CheckpointName);
+
+                // Configure bottleneck tensor based on the model.
+                if (options.arch == TensorFlowEstimator.Architecture.ResnetV2101)
+                    BottleneckOperationName = "resnet_v2_101/SpatialSqueeze";
+                else
+                    BottleneckOperationName = "inception_v3/SpatialSqueeze";
+
                 Outputs = new[] { options.ScoreColumnName, options.PredictedLabelColumnName };
 
                 // Add transfer learning layer.
@@ -931,8 +929,8 @@ namespace Microsoft.ML.Transforms
             for (int index = 0; index < TFOutputOperations.Length; index += 1)
                 TFOutputNodes[index] = new TF_Output(TFOutputOperations[index].Item1, TFOutputOperations[index].Item2);
 
+            // This runner will be used during inferencing.
             Runner = new Runner(session, TFInputNodes, TFOutputNodes, null);
-
         }
 
         private static (Operation, int) GetOperationFromName(string operation, Session session)
@@ -1624,13 +1622,32 @@ namespace Microsoft.ML.Transforms
             [Argument(ArgumentType.AtMostOnce, HelpText = "Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].", SortOrder = 16)]
             public bool AddBatchDimensionInputs = false;
 
-            public string BottleneckOperationName = "resnet_v2_101/SpatialSqueeze";
-            public string FinalWeightsName = "final_weights";
-            public string FinalBiasesName = "final_biases";
+            /// <summary>
+            /// Indicates if transfer learning is requested.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Transfer learning on a model.", SortOrder = 15)]
             public bool TransferLearning = false;
+
+            /// <summary>
+            /// Specifies the model architecture to be used in the case of image classification training using transfer learning.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Model architecture to be used in transfer learning for image classification.", SortOrder = 15)]
             public Architecture arch = Architecture.ResnetV2101;
+
+            /// <summary>
+            /// Name of the tensor that will contain the output scores of the last layer when transfer learning is done.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Softmax tensor of the last layer in transfer learning.", SortOrder = 15)]
             public string ScoreColumnName = "Scores";
+
+            /// <summary>
+            /// Name of the tensor that will contain the predicted label from output scores of the last layer when transfer learning is done.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Argmax tensor of the last layer in transfer learning.", SortOrder = 15)]
             public string PredictedLabelColumnName = "PredictedLabel";
+
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Checkpoint folder to store graph files in the event of transfer learning.", SortOrder = 15)]
+            public string CheckpointName = "_retrain_checkpoint";
         }
 
         private readonly IHost _host;

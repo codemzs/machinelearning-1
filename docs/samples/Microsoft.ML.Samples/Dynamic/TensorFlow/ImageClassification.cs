@@ -44,34 +44,31 @@ namespace Samples.Dynamic
                new[] { nameof(OutputScores.FinalTensor), "resnet_v2_101/SpatialSqueeze" },
                new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);*/
 
-            var pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label").Append(mlContext.Transforms.Conversion.ConvertType("Label", outputKind:DataKind.UInt64))
-    .Append(mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
-   .ImageClassification(nameof(TensorData.input), nameof(TensorData.Label), batchSize: 2, addBatchDimensionInput: true));
+            var pipeline = mlContext.Transforms.Conversion.MapValueToKey(nameof(TensorData.Label))
+                .Append(mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
+                .ImageClassification(nameof(TensorData.input), nameof(TensorData.Label), batchSize: 2, addBatchDimensionInput: true));
 
             // Run the pipeline and get the transformed values.
             var estimator = pipeline.Fit(idv);
+            var transformedValues = estimator.Transform(idv);
 
-            //for (int index = 0; index < 100; index++)
-            //{
-                var transformedValues = estimator.Transform(idv);
+            // Retrieve model scores.
+            var outScores = mlContext.Data.CreateEnumerable<OutputScores>(
+                transformedValues, reuseRowObject: false);
 
-                // Retrieve model scores.
-                var outScores = mlContext.Data.CreateEnumerable<OutputScores>(
-                    transformedValues, reuseRowObject: false);
-
-                // Display scores. (for the sake of brevity we display scores of the
-                // first 3 classes)
-                foreach (var prediction in outScores)
+            // Display scores. (for the sake of brevity we display scores of the
+            // first 3 classes)
+            foreach (var prediction in outScores)
+            {
+                int numClasses = 0;
+                foreach (var classScore in prediction.Scores.Take(3))
                 {
-                    int numClasses = 0;
-                    foreach (var classScore in prediction.Scores.Take(3))
-                    {
-                        Console.WriteLine(
-                            $"Class #{numClasses++} score = {classScore}");
-                    }
-                    Console.WriteLine(new string('-', 10));
+                    Console.WriteLine(
+                        $"Class #{numClasses++} score = {classScore}");
                 }
-            //}
+                Console.WriteLine(new string('-', 10));
+            }
+
             Console.WriteLine(sw.Elapsed);
             // Results look like below...
             //Class #0 score = -0.8092947
@@ -86,7 +83,7 @@ namespace Samples.Dynamic
 
         private static void MlContext_Log(object sender, LoggingEventArgs e)
         {
-            Console.WriteLine(e.Message);
+            //Console.WriteLine(e.Message);
         }
 
         private const int imageHeight = 224; 

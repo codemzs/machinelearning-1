@@ -132,6 +132,7 @@ namespace Microsoft.ML.Transforms
             string outputGraphPath = null,
             string scoreColumnName = "Scores",
             string predictedLabelColumnName = "PredictedLabel",
+            string checkpointName = "_retrain_checkpoint",
             Architecture arch = Architecture.ResnetV2101,
             DnnFramework dnnFramework = DnnFramework.Tensorflow,
             int epoch = 10,
@@ -152,7 +153,8 @@ namespace Microsoft.ML.Transforms
                 AddBatchDimensionInputs = addBatchDimensionInput,
                 TransferLearning = true,
                 ScoreColumnName = scoreColumnName,
-                PredictedLabelColumnName = predictedLabelColumnName
+                PredictedLabelColumnName = predictedLabelColumnName,
+                CheckpointName = checkpointName
             };
             return new TensorFlowEstimator(_env, options, this);
         }
