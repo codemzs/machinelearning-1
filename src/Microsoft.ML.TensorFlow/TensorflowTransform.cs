@@ -789,51 +789,45 @@ namespace Microsoft.ML.Transforms
                 // This is done to reduce memory allocation every time tensor is created.
                 Utils.EnsureSize(ref _denseData, _vBuffer.Length, keepOld: false);
                 _vBuffer.CopyTo(_denseData);
+                return CastDataAndReturnAsTensor(_denseData);
+            }
 
-                if(typeof(T) == typeof(sbyte))
-                {
-                    var sbyteBuffer = (sbyte[])Convert.ChangeType(_denseData, typeof(sbyte[]));
-                    return new Tensor(sbyteBuffer, _dims);
-                }
+            private Tensor CastDataAndReturnAsTensor(T[] data)
+            {
+                if (typeof(T) == typeof(sbyte))
+                    return new Tensor((sbyte[])(object)data, _dims, TF_DataType.TF_INT8);
+                else if (typeof(T) == typeof(long))
+                    return new Tensor((long[])(object)data, _dims, TF_DataType.TF_INT64);
+                else if (typeof(T) == typeof(Int32))
+                    return new Tensor((Int32[])(object)data, _dims, TF_DataType.TF_INT32);
+                else if (typeof(T) == typeof(Int16))
+                    return new Tensor((Int16[])(object)data, _dims, TF_DataType.TF_INT16);
+                else if (typeof(T) == typeof(byte))
+                    return new Tensor((byte[])(object)data, _dims, TF_DataType.TF_UINT8);
                 else if (typeof(T) == typeof(ulong))
-                {
-                    var longBuffer = (ulong[])Convert.ChangeType(_denseData, typeof(ulong[]));
-                    return new Tensor(longBuffer, _dims);
-                }
+                    return new Tensor((ulong[])(object)data, _dims, TF_DataType.TF_UINT64);
                 else if (typeof(T) == typeof(UInt32))
-                {
-                    var uint32Buffer = (UInt32[])Convert.ChangeType(_denseData, typeof(UInt32[]));
-                    return new Tensor(uint32Buffer, _dims);
-                }
+                    return new Tensor((UInt32[])(object)data, _dims, TF_DataType.TF_UINT32);
                 else if (typeof(T) == typeof(UInt16))
-                {
-                    var uint16Buffer = (UInt16[])Convert.ChangeType(_denseData, typeof(UInt16[]));
-                    return new Tensor(uint16Buffer, _dims);
-                }
+                    return new Tensor((UInt16[])(object)data, _dims, TF_DataType.TF_UINT16);
                 else if (typeof(T) == typeof(bool))
-                {
-                    return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_BOOL);
-                }
+                    return new Tensor((bool[])(object)data, _dims, TF_DataType.TF_BOOL);
                 else if (typeof(T) == typeof(float))
-                {
-                    return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_FLOAT);
-                }
-                else if (typeof(T) == typeof(double))
-                {
-                    return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_DOUBLE);
-                }
-                else if (typeof(T) == typeof(System.ReadOnlyMemory<char>))
+                    return new Tensor((float[])(object)data, _dims, TF_DataType.TF_FLOAT);
+                else if (typeof(T) == typeof(float))
+                    return new Tensor((double[])(object)data, _dims, TF_DataType.TF_DOUBLE);
+                else if (typeof(T) == typeof(ReadOnlyMemory<char>))
                 {
                     byte[][] bytes = new byte[_vBuffer.Length][];
                     for (int i = 0; i < bytes.Length; i++)
                     {
-                        bytes[i] = Encoding.UTF8.GetBytes(((System.ReadOnlyMemory<char>)(object)_denseData[i]).ToArray());
+                        bytes[i] = Encoding.UTF8.GetBytes(((ReadOnlyMemory<char>)(object)data[i]).ToArray());
                     }
 
                     return new Tensor(bytes, _tfShape.dims.Select(x => (long)x).ToArray());
                 }
 
-                return new Tensor(new NDArray(_denseData, _tfShape)); //TFTensor.Create(_denseData, _vBuffer.Length, _tfShape);
+                return new Tensor(new NDArray(data, _tfShape));
             }
 
             public void BufferTrainingData()
@@ -845,9 +839,8 @@ namespace Microsoft.ML.Transforms
 
             public Tensor GetBufferedBatchTensor()
             {
-                var tensor = new Tensor(new NDArray(_bufferedData, _tfShape));
                 _position = 0;
-                return tensor;
+                return CastDataAndReturnAsTensor(_bufferedData);
             }
         }
     }
