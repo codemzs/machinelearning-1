@@ -78,10 +78,10 @@ namespace Microsoft.ML.Transforms
         internal readonly string[] NonTFOutputs;
 
         internal static int BatchSize = 1;
-        internal const string Summary = "Trains DDN models.";
-        internal const string UserName = "TensorFlowTransform";
-        internal const string ShortName = "TFTransform";
-        internal const string LoaderSignature = "TensorFlowTransform";
+        internal const string Summary = "Trains Dnn models.";
+        internal const string UserName = "DnnTransform";
+        internal const string ShortName = "DnnTransform";
+        internal const string LoaderSignature = "DnnTransform";
 
         internal static class DefaultModelFileNames
         {
@@ -95,12 +95,11 @@ namespace Microsoft.ML.Transforms
         private static VersionInfo GetVersionInfo()
         {
             return new VersionInfo(
-                modelSignature: "TENSFLOW",
+                modelSignature: "DNN",
                 //verWrittenCur: 0x00010001, // Initial
-                //verWrittenCur: 0x00010002,  // Added Support for Multiple Outputs and SavedModel.
-                verWrittenCur: 0x00010003,  // Added Support for adding batch dimension in inputs.
-                verReadableCur: 0x00010003,
-                verWeCanReadBack: 0x00010001,
+                verWrittenCur: 0x00000001,
+                verReadableCur: 0x00000001,
+                verWeCanReadBack: 0x00000001,
                 loaderSignature: LoaderSignature,
                 loaderAssemblyName: typeof(DnnTransformer).Assembly.FullName);
         }
