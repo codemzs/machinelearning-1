@@ -461,8 +461,7 @@ namespace Microsoft.ML.Transforms
             {
                 if (Session != IntPtr.Zero)
                 {
-                    Session.close();
-                    Session.Dispose();
+                    Session.close(); // invoked Dispose()
                 }
             }
             finally
@@ -796,38 +795,42 @@ namespace Microsoft.ML.Transforms
                     var sbyteBuffer = (sbyte[])Convert.ChangeType(_denseData, typeof(sbyte[]));
                     return new Tensor(sbyteBuffer, _dims);
                 }
-
-                if (typeof(T) == typeof(ulong))
+                else if (typeof(T) == typeof(ulong))
                 {
                     var longBuffer = (ulong[])Convert.ChangeType(_denseData, typeof(ulong[]));
                     return new Tensor(longBuffer, _dims);
                 }
-
-                if (typeof(T) == typeof(UInt32))
+                else if (typeof(T) == typeof(UInt32))
                 {
                     var uint32Buffer = (UInt32[])Convert.ChangeType(_denseData, typeof(UInt32[]));
                     return new Tensor(uint32Buffer, _dims);
                 }
-
-                if (typeof(T) == typeof(UInt16))
+                else if (typeof(T) == typeof(UInt16))
                 {
                     var uint16Buffer = (UInt16[])Convert.ChangeType(_denseData, typeof(UInt16[]));
                     return new Tensor(uint16Buffer, _dims);
                 }
-
-                if (typeof(T) == typeof(bool))
+                else if (typeof(T) == typeof(bool))
                 {
                     return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_BOOL);
                 }
-
-                if (typeof(T) == typeof(float))
+                else if (typeof(T) == typeof(float))
                 {
                     return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_FLOAT);
                 }
-
-                if (typeof(T) == typeof(double))
+                else if (typeof(T) == typeof(double))
                 {
                     return new Tensor(new NDArray(_denseData, _tfShape), TF_DataType.TF_DOUBLE);
+                }
+                else if (typeof(T) == typeof(System.ReadOnlyMemory<char>))
+                {
+                    byte[][] bytes = new byte[_vBuffer.Length][];
+                    for (int i = 0; i < bytes.Length; i++)
+                    {
+                        bytes[i] = Encoding.UTF8.GetBytes(((System.ReadOnlyMemory<char>)(object)_denseData[i]).ToArray());
+                    }
+
+                    return new Tensor(bytes, _tfShape.dims.Select(x => (long)x).ToArray());
                 }
 
                 return new Tensor(new NDArray(_denseData, _tfShape)); //TFTensor.Create(_denseData, _vBuffer.Length, _tfShape);

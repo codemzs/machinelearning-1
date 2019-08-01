@@ -32,7 +32,7 @@ namespace Microsoft.ML.Transforms.TensorFlow
         internal static DataViewSchema GetModelSchema(IExceptionContext ectx, Graph graph, string opType = null)
         {
             var schemaBuilder = new DataViewSchema.Builder();
-            foreach (Operation op in graph.get_operations())
+            foreach (var op in graph)
             {
                 if (opType != null && opType != op.OpType)
                     continue;
