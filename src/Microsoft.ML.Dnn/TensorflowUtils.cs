@@ -128,22 +128,9 @@ namespace Microsoft.ML.Transforms.Dnn
 
         private static Session LoadTFSession(IHostEnvironment env, string exportDirSavedModel)
         {
-            //Contracts.Check(env != null, nameof(env));
-            //env.CheckValue(exportDirSavedModel, nameof(exportDirSavedModel));
-            //return Session.LoadFromSavedModel(exportDirSavedModel);
-
             Contracts.Check(env != null, nameof(env));
             env.CheckValue(exportDirSavedModel, nameof(exportDirSavedModel));
-            var sessionOptions = new TF_SessionOptions();
-            sessionOptions.options = c_api.TF_NewSessionOptions();
-             var tags = new string[] { "serve" };
-            var graph = new Graph();
-            TF_Buffer metaGraphDef = default;
-            var status = new Status();
-            var h = c_api.TF_LoadSessionFromSavedModel(sessionOptions.options, IntPtr.Zero, exportDirSavedModel, tags, 1, graph, ref metaGraphDef, status);
-           // return new Session(h);
-                return Session.LoadFromSavedModel(exportDirSavedModel);
-
+            return Session.LoadFromSavedModel(exportDirSavedModel);
         }
 
         // A TensorFlow frozen model is a single file. An un-frozen (SavedModel) on the other hand has a well-defined folder structure.
