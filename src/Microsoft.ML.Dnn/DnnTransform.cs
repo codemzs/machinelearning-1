@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1145,6 +1146,7 @@ namespace Microsoft.ML.Transforms
             private readonly int[] _inputColIndices;
             private readonly bool[] _isInputVector;
             private readonly TensorShape[] _fullySpecifiedShapes;
+            private readonly ConcurrentBag<Runner> _runners;
 
             public Mapper(DnnTransformer parent, DataViewSchema inputSchema) :
                    base(Contracts.CheckRef(parent, nameof(parent)).Host.Register(nameof(Mapper)), inputSchema, parent)
@@ -1217,6 +1219,7 @@ namespace Microsoft.ML.Transforms
                         _fullySpecifiedShapes[i] = new TensorShape(l);
                     }
                 }
+                _runners = new ConcurrentBag<Runner>();
             }
 
             private protected override void SaveModel(ModelSaveContext ctx) => _parent.SaveModel(ctx);
@@ -1302,7 +1305,12 @@ namespace Microsoft.ML.Transforms
             {
                 if (outputCache.Position != position)
                 {
-                    var runner = _parent.Runner;
+                    bool addToTheBag = false;
+                    if (!_runners.TryTake(out Runner runner))
+                    {
+                        runner = _parent.Runner.CloneRunner();
+                        addToTheBag = true;
+                    }
                     for (int i = 0; i < _inputColIndices.Length; i++)
                     {
                         var inputName = _parent.Inputs[i];
@@ -1316,6 +1324,9 @@ namespace Microsoft.ML.Transforms
                         outputCache.Outputs[activeOutputColNames[j]] = tensors[j];
 
                     outputCache.Position = position;
+
+                    if (addToTheBag)
+                        _runners.Add(runner);
                 }
             }
 

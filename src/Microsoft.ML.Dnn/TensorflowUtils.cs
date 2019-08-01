@@ -418,6 +418,42 @@ namespace Microsoft.ML.Transforms.Dnn
                 return this;
             }
 
+            /*public Runner AddInput(string name, int index, IntPtr value)
+            {
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value));
+
+                _inputs[index] = ParseOutput(name);
+                _inputValues[index] = value;
+
+                return this;
+            }
+
+
+            public Runner AddOutputs(string name, int index)
+            {
+
+                _outputs[index] = ParseOutput(name);
+
+                return this;
+            }
+
+            // Parses user strings that contain both the operation name and an index.
+            private TF_Output ParseOutput(string operation)
+            {
+                var p = operation.IndexOf(':');
+                if (p != -1 && p != operation.Length - 1)
+                {
+                    var op = operation.Substring(0, p);
+                    if (int.TryParse(operation.Substring(p + 1), out var idx))
+                    {
+                        return new TF_Output(_session.graph.get_operation_by_name(op), idx);
+                    }
+                }
+                return new TF_Output(_session.graph.get_operation_by_name(operation), 0);
+            }*/
+
+
             /// <summary>
             /// Adds the specified operation names as the ones to be retrieved.
             /// </summary>
@@ -486,6 +522,11 @@ namespace Microsoft.ML.Transforms.Dnn
                     result[i] = new Tensor(ovals[i]);
                 }
                 return result;
+            }
+
+            public Runner CloneRunner()
+            {
+                return new Runner(_session, _inputs, _outputs, _operations);
             }
         }
 
