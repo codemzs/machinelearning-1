@@ -19,6 +19,7 @@ using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.Dnn;
 using NumSharp;
 using Tensorflow;
+using Tensorflow.Summaries;
 using static Microsoft.ML.Transforms.Dnn.DnnUtils;
 using static Tensorflow.Python;
 
@@ -372,7 +373,11 @@ namespace Microsoft.ML.Transforms
                     GetTrainingInputInfo(inputSchema, inputsForTraining[i], inputsForTraining[i], options.BatchSize);
 
             var index = inputsForTraining.Length - 1;
-            inputsForTraining[index] = LabelTensor.name.Split(':').First();
+            if (options.TransferLearning)
+                inputsForTraining[index] = LabelTensor.name.Split(':').First();
+            else
+                inputsForTraining[index] = options.TensorFlowLabel;
+
             (inputColIndices[index], isInputVector[index], tfInputTypes[index], tfInputShapes[index]) =
                     GetTrainingInputInfo(inputSchema, options.LabelColumn, inputsForTraining[index], options.BatchSize);
 
@@ -380,17 +385,29 @@ namespace Microsoft.ML.Transforms
             Operation labelOp;
             int labelOpIdx;
             if (options.ReTrain)
-                (labelOp, labelOpIdx) = GetOperationFromName(options.LabelColumn, Session);
+                (labelOp, labelOpIdx) = GetOperationFromName(options.TensorFlowLabel, Session);
             else
                 (labelOp, labelOpIdx) = GetOperationFromName(LabelTensor.name, Session);
 
-            var tfInputs = new TF_Output[TFInputNodes.Length + 1];
+            TF_Output[] tfInputs;
+            if (options.ReTrain && !string.IsNullOrEmpty(options.LearningRateOperation))
+                tfInputs = new TF_Output[TFInputNodes.Length + 2]; //Inputs + Label + Learning Rate.
+            else
+                tfInputs = new TF_Output[TFInputNodes.Length + 1]; //Inputs + Label.
+
             Array.Copy(TFInputNodes, tfInputs, TFInputNodes.Length);
             tfInputs[TFInputNodes.Length] = new TF_Output(labelOp, labelOpIdx);
 
+            if (options.ReTrain)
+            {
+                var lr = GetOperationFromName(options.LearningRateOperation, Session);
+                tfInputs[TFInputNodes.Length + 1] = new TF_Output(lr.Item1, lr.Item2);
+            }
+
+
             // Create graph outputs.
             var fetchList = new List<string>();
-            if (!options.TransferLearning)
+            if (options.ReTrain)
             {
                 if (options.LossOperation != null)
                     fetchList.Add(options.LossOperation);
@@ -398,26 +415,35 @@ namespace Microsoft.ML.Transforms
                     fetchList.Add(options.MetricOperation);
             }
 
-            var merged = tf.summary.merge_all();
-            var trainWriter = tf.summary.FileWriter(Path.Combine(Directory.GetCurrentDirectory(), "train"), Session.graph);
             TF_Output[] tfOutputs = fetchList.Select(x => { var y = GetOperationFromName(x, Session); return new TF_Output(y.Item1, y.Item2); }).ToArray();
 
             // Create graph operations.
             IntPtr[] ops = null;
-
-            if (options.ReTrain && options.LearningRateOperation != null)
-                ops = new[] { c_api.TF_GraphOperationByName(Graph, options.LearningRateOperation) };
+            if (options.ReTrain && options.OptimizationOperation != null)
+                ops = new[] { c_api.TF_GraphOperationByName(Graph, options.OptimizationOperation) };
             else
                 ops = new[] { (IntPtr)TrainStep };
-            
-            var trainSaver = tf.train.Saver();
-            trainSaver.save(Session, CheckpointPath);
+
+            Saver trainSaver = null;
+            FileWriter trainWriter = null;
+            Tensor merged = null;
+            Runner testSetRunner = null;
+            Runner validationSetRunner = null;
+            if (options.TransferLearning)
+            {
+                merged = tf.summary.merge_all();
+                trainWriter = tf.summary.FileWriter(Path.Combine(Directory.GetCurrentDirectory(), "train"), Session.graph);
+                trainSaver = tf.train.Saver();
+                trainSaver.save(Session, CheckpointPath);
+                testSetRunner = new Runner(Session, tfInputs, new[] { EvaluationStep._as_tf_output(), CrossEntropy._as_tf_output() }, null);
+                validationSetRunner = new Runner(Session, tfInputs, new[] { EvaluationStep._as_tf_output() }, null);
+            }
 
             // Instantiate the graph.
-            var runner = new Runner(Session, tfInputs, new[] { merged._as_tf_output() }, ops);
-            var testSetRunner = new Runner(Session, tfInputs, new[] { EvaluationStep._as_tf_output(), CrossEntropy._as_tf_output() }, null);
-            var validationSetRunner = new Runner(Session, tfInputs, new[] { EvaluationStep._as_tf_output() }, null);
+            var runner = new Runner(Session, tfInputs, tfOutputs, ops);
             var cols = input.Schema.Where(c => inputColIndices.Contains(c.Index));
+            if (options.ReTrain && !string.IsNullOrEmpty(options.LearningRateOperation))
+                runner.AddInput(TFInputNodes.Length + 1, new Tensor(options.LearningRate));
 
             for (int epoch = 0; epoch < options.Epoch; epoch++)
             {
@@ -574,12 +600,13 @@ namespace Microsoft.ML.Transforms
                 }
             }
 
-            trainSaver.save(Session, CheckpointPath);
-
             if (options.ReTrain)
                 UpdateModelOnDisk(options.ModelLocation, options);
             else
+            {
+                trainSaver.save(Session, CheckpointPath);
                 UpdateTransferLearningModelOnDisk(options, ClassCount);
+            }
         }
 
         private (float loss, float metric) ExecuteGraphAndRetrieveMetrics(
@@ -917,8 +944,10 @@ namespace Microsoft.ML.Transforms
                 (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, new[] { SoftMaxTensor.name, Prediction.name });
             }
             else
+            {
                 (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, Outputs);
 
+            }
             (TFInputTypes, TFInputShapes, TFInputOperations) = GetInputInfo(Host, Session, Inputs, batchSize);
 
             TFInputNodes = new TF_Output[Inputs.Length];
@@ -965,7 +994,7 @@ namespace Microsoft.ML.Transforms
                 if (inputTensor == null)
                     throw host.ExceptParam(nameof(inputs), $"Input column '{input}' does not exist in the model");
 
-                TF_DataType tfInputType = inputTensor.OpType == "PlaceHolder" ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(index);
+                TF_DataType tfInputType = string.Compare(inputTensor.OpType, "PlaceHolder", true) == 0 ? inputTensor.OutputType(inputTensorIndex) : inputTensor.InputType(index);
                 if (!DnnUtils.IsTypeSupported(tfInputType))
                     throw host.ExceptParam(nameof(session), $"Input type '{tfInputType}' of input column '{input}' is not supported in TensorFlow");
 
