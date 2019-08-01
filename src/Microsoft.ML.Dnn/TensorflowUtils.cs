@@ -78,7 +78,7 @@ namespace Microsoft.ML.Transforms.Dnn
             var graph = new Graph();
             try
             {
-                graph.Import(modelBytes);
+                graph.Import(modelBytes, "");
             }
             catch (Exception ex)
             {
