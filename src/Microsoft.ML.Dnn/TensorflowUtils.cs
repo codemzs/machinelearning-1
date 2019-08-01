@@ -291,34 +291,11 @@ namespace Microsoft.ML.Transforms.Dnn
         {
             if (tensor == null)
                 throw Contracts.ExceptEmpty(nameof(tensor));
-            //
-            // TF_STRING tensors are encoded with a table of 8-byte offsets followed by TF_StringEncode-encoded bytes.
-            // [offset1, offset2,...,offsetn, s1size, s1bytes, s2size, s2bytes,...,snsize,snbytes]
-            //
-            long size = 1;
-            foreach (var s in tensor.TensorShape.Dimensions)
-                size *= s;
 
-            var buffer = new byte[size][];
-            var src = c_api.TF_TensorData(tensor);
-            var srcLen = (IntPtr)(src.ToInt64() + (long)tensor.bytesize);
-            src += (int)(size * 8);
-            for (int i = 0; i < buffer.Length; i++)
-            {
-                using (var status = new Status())
-                {
-                    IntPtr dst = IntPtr.Zero;
-                    ulong dstLen = 0;
-                    var read = c_api.TF_StringDecode(src, (ulong)(srcLen.ToInt64() - src.ToInt64()), dst, ref dstLen, status);
-                    status.Check();
-                    buffer[i] = new byte[(int)dstLen];
-                    Marshal.Copy(dst, buffer[i], 0, buffer[i].Length);
-                    src += (int)read;
-                }
-            }
+            var buffer = tensor.StringData();
 
             for (int i = 0; i < buffer.Length; i++)
-                result[i] = (T)(object)Encoding.UTF8.GetString(buffer[i]).AsMemory();
+                result[i] = (T)(object)buffer[i].AsMemory();
         }
 
         internal static bool IsTypeSupported(TF_DataType tfoutput)
