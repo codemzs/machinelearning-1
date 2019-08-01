@@ -17,7 +17,7 @@ namespace Microsoft.ML
     public sealed class MLContext : IHostEnvironment
     {
         // REVIEW: consider making LocalEnvironment and MLContext the same class instead of encapsulation.
-        private readonly ConsoleEnvironment _env;
+        private readonly LocalEnvironment _env;
 
         /// <summary>
         /// Trainers and tasks specific to binary classification problems.
@@ -109,7 +109,7 @@ namespace Microsoft.ML
         /// </remarks>
         public MLContext(int? seed = null)
         {
-            _env = new ConsoleEnvironment(seed);
+            _env = new LocalEnvironment(seed);
             _env.AddListener<ChannelMessage>(ProcessMessage);
 
             BinaryClassification = new BinaryClassificationCatalog(_env);
