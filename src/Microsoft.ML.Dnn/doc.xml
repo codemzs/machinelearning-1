@@ -24,10 +24,6 @@
           Optionally, it can further retrain TensorFlow model on user data to adjust model parameters on the user data ( also know as "Transfer Learning").
         </para>
         <para>
-          For scoring, the transform takes as inputs the pre-trained Tensorflow model, the names of the input nodes, and names of the output nodes whose values we want to extract.
-          For retraining, the transform also requires training related parameters such as the names of optimization operation in the TensorFlow graph, the name of the learning rate operation in the graph and its value, name of the operations in the graph to compute loss and performance metric etc.
-        </para>
-        <para>
           This transform requires the <a href="https://dotnet.myget.org/feed/dotnet-core/package/nuget/Microsoft.ML.Dnn">Microsoft.ML.Dnn</a> nuget to be installed.
           The DnnTransform has the following assumptions regarding input, output, processing of data, and retraining.
         </para>

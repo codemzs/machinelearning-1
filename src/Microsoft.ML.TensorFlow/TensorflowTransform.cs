@@ -586,7 +586,6 @@ namespace Microsoft.ML.Transforms
             private Delegate MakeGetter<T>(DataViewRow input, int iinfo, ITensorValueGetter[] srcTensorGetters, string[] activeOutputColNames, OutputCache outputCache)
             {
                 Host.AssertValue(input);
-                //_parent.Runner.Fetch(_parent.TFOutputNodes);
 
                 if (_parent.OutputTypes[iinfo].IsStandardScalar())
                 {

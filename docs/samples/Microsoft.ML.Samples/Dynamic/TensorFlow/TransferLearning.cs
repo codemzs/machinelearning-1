@@ -17,36 +17,20 @@ namespace Samples.Dynamic
         /// </summary>
         public static void Example()
         {
-            // Download the ResNet 101 model from the location below.
-            // https://storage.googleapis.com/download.tensorflow.org/models/tflite_11_05_08/resnet_v2_101.tgz
             var sw = new Stopwatch();
-            sw.Start();
-            string modelLocation = "resnet_v2_101_299_frozen.pb";
-            if (!File.Exists(modelLocation))
-            {
-                modelLocation = Download(@"https://storage.googleapis.com/download.tensorflow.org/models/tflite_11_05_08/resnet_v2_101.tgz", @"resnet_v2_101_299_frozen.tgz");
-                Unzip(Path.Join(Directory.GetCurrentDirectory(), modelLocation),
-                    Directory.GetCurrentDirectory());
-
-                modelLocation = "resnet_v2_101_299_frozen.pb";
-            }
 
             var mlContext = new MLContext();
             var data = GetTensorData();
             var idv = mlContext.Data.LoadFromEnumerable(data);
 
-            mlContext.Log += MlContext_Log;
-
             // Create a ML pipeline.
-            /*var pipeline =
-                mlContext.Model.LoadTensorFlowModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta-1.pb", false)
-               .ScoreTensorFlowModel(
-               new[] { nameof(OutputScores.FinalTensor), "resnet_v2_101/SpatialSqueeze" },
-               new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);*/
-
-            var pipeline = mlContext.Transforms.Conversion.MapValueToKey(nameof(TensorData.Label))
-                .Append(mlContext.Model.LoadDnnModel(@"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\resnet_v2_101_299.meta", true)
-                .ImageClassification(nameof(TensorData.input), nameof(TensorData.Label), batchSize: 2, addBatchDimensionInput: true));
+            var pipeline = 
+                mlContext.Transforms.Conversion.MapValueToKey(
+                    nameof(TensorData.Label))
+                .Append(mlContext.Model.ImageClassification(
+                    nameof(TensorData.input),
+                    nameof(TensorData.Label), batchSize: 2,
+                        addBatchDimensionInput: true));
 
             // Run the pipeline and get the transformed values.
             var estimator = pipeline.Fit(idv);
@@ -61,29 +45,27 @@ namespace Samples.Dynamic
             foreach (var prediction in outScores)
             {
                 int numClasses = 0;
-                foreach (var classScore in prediction.Scores.Take(3))
+                foreach (var classScore in prediction.Scores.Take(2))
                 {
                     Console.WriteLine(
                         $"Class #{numClasses++} score = {classScore}");
                 }
+                Console.WriteLine(
+                    $"Predicted Label: {prediction.PredictedLabel}");
+
+
                 Console.WriteLine(new string('-', 10));
             }
 
             Console.WriteLine(sw.Elapsed);
-            // Results look like below...
-            //Class #0 score = -0.8092947
-            //Class #1 score = -0.3310375
-            //Class #2 score = 0.1119193
-            //----------
-            //Class #0 score = -0.7807726
-            //Class #1 score = -0.2158062
-            //Class #2 score = 0.1153686
-            //----------
-        }
-
-        private static void MlContext_Log(object sender, LoggingEventArgs e)
-        {
-            //Console.WriteLine(e.Message);
+            // Class #0 score = 0.03416626
+            // Class #1 score = 0.9658337
+            // Predicted Label: 1
+            // ----------
+            // Class #0 score = 0.02959618
+            // Class #1 score = 0.9704038
+            // Predicted Label: 1
+            // ----------
         }
 
         private const int imageHeight = 224; 

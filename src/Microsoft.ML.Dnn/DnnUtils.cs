@@ -3,13 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Text;
 using Microsoft.ML.Data;
 using Microsoft.ML.Runtime;
 using Tensorflow;
@@ -258,13 +255,11 @@ namespace Microsoft.ML.Transforms.Dnn
         /// </summary>
         /// <param name="env">The environment to use.</param>
         /// <param name="modelPath">The model to load.</param>
+        /// <param name="metaGraph"></param>
         /// <returns></returns>
         internal static DnnModel LoadDnnModel(IHostEnvironment env, string modelPath, bool metaGraph = false)
         {
             var session = GetSession(env, modelPath, metaGraph);
-            //new Runner(session, null, null, new[] { (IntPtr)tf.global_variables_initializer() }).Run();
-            //var saver = tf.train.Saver();
-            //saver.restore(session, @"E:\machinelearning\bin\AnyCPU.Debug\Microsoft.ML.Samples\netcoreapp2.1\check");
             return new DnnModel(env, session, modelPath);
         }
 
@@ -370,7 +365,7 @@ namespace Microsoft.ML.Transforms.Dnn
             /// Adds an input to the session
             /// </summary>
             /// <returns>An instance to the runner, so you can easily chain the operations together.</returns>
-            /// <param name="input">Incoming port.</param>
+            /// <param name="index"></param>
             /// <param name="value">Value to assing to the incoming port.</param>
             public Runner AddInput(int index, IntPtr value)
             {
@@ -382,47 +377,10 @@ namespace Microsoft.ML.Transforms.Dnn
                 return this;
             }
 
-            /*public Runner AddInput(string name, int index, IntPtr value)
-            {
-                if (value == null)
-                    throw new ArgumentNullException(nameof(value));
-
-                _inputs[index] = ParseOutput(name);
-                _inputValues[index] = value;
-
-                return this;
-            }
-
-
-            public Runner AddOutputs(string name, int index)
-            {
-
-                _outputs[index] = ParseOutput(name);
-
-                return this;
-            }
-
-            // Parses user strings that contain both the operation name and an index.
-            private TF_Output ParseOutput(string operation)
-            {
-                var p = operation.IndexOf(':');
-                if (p != -1 && p != operation.Length - 1)
-                {
-                    var op = operation.Substring(0, p);
-                    if (int.TryParse(operation.Substring(p + 1), out var idx))
-                    {
-                        return new TF_Output(_session.graph.get_operation_by_name(op), idx);
-                    }
-                }
-                return new TF_Output(_session.graph.get_operation_by_name(operation), 0);
-            }*/
-
-
             /// <summary>
             /// Adds the specified operation names as the ones to be retrieved.
             /// </summary>
             /// <returns>An instance to the runner, so you can easily chain the operations together.</returns>
-            /// <param name="targetNames">One or more target names.</param>
             public Runner AddTarget(params IntPtr[] operations)
             {
                 _operations = operations;
@@ -456,13 +414,6 @@ namespace Microsoft.ML.Transforms.Dnn
             /// necessary.
             /// </summary>
             /// <returns>An array of tensors fetched from the requested outputs.</returns>
-            /// <param name="inputs">Inputs nodes.</param>
-            /// <param name="inputValues">Input values.</param>
-            /// <param name="outputs">Output nodes.</param>
-            /// <param name="targetOpers">Target operations to execute.</param>
-            /// <param name="runMetadata">Run metadata, a buffer containing the protocol buffer encoded value for https://github.com/tensorflow/tensorflow/blob/r1.9/tensorflow/core/protobuf/config.proto.</param>
-            /// <param name="runOptions">Run options, a buffer containing the protocol buffer encoded value for https://github.com/tensorflow/tensorflow/blob/r1.9/tensorflow/core/protobuf/config.proto.</param>
-            /// <param name="status">Status buffer, if specified a status code will be left here, if not specified, a <see cref="T:TensorFlow.TFException"/> exception is raised if there is an error.</param>
             public Tensor[] Run()
             {
                 if (_session == IntPtr.Zero)

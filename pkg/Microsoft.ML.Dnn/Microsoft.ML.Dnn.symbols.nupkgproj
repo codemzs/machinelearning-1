@@ -1,5 +1,5 @@
 <Project DefaultTargets="Pack">
 
-  <Import Project="Microsoft.ML.TimeSeries.nupkgproj" />
+  <Import Project="Microsoft.ML.Dnn.nupkgproj" />
 
 </Project>
