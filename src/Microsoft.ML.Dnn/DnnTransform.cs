@@ -7,6 +7,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection.Emit;
+using System.Runtime.InteropServices;
 using System.Text;
 using Google.Protobuf;
 using Microsoft.ML;
@@ -22,6 +24,7 @@ using Tensorflow.Summaries;
 using static Microsoft.ML.Transforms.Dnn.DnnUtils;
 using static Microsoft.ML.Transforms.DnnEstimator;
 using static Tensorflow.Python;
+using Architecture = Microsoft.ML.Transforms.DnnEstimator.Architecture;
 
 [assembly: LoadableClass(DnnTransformer.Summary, typeof(IDataTransform), typeof(DnnTransformer),
     typeof(DnnEstimator.Options), typeof(SignatureDataTransform), DnnTransformer.UserName, DnnTransformer.ShortName)]
@@ -63,6 +66,7 @@ namespace Microsoft.ML.Transforms
         private Tensor _labelTensor;
         private Tensor _evaluationStep;
         private Tensor _prediction;
+        private Tensor _bottleneckInput;
         private readonly int _classCount;
         private readonly string _checkpointPath;
         private readonly string _bottleneckOperationName;
@@ -370,17 +374,66 @@ namespace Microsoft.ML.Transforms
             Runner runner;
             var cols = input.Schema.Where(c => inputColIndices.Contains(c.Index));
 
+            List<float[]> featurizedImages = new List<float[]>();
+            List<long> labels = new List<long>();
+            if (options.TransferLearning)
+            {
+                uint label = 0;
+                using (var cursor = input.GetRowCursor(cols))
+                {
+                    var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes, tfInputShapes);
+                    var labelGetter = cursor.GetGetter<uint>(cursor.Schema[options.LabelColumn]);
+                    while (cursor.MoveNext())
+                    {
+                        for (int i = 0; i < inputsForTraining.Length - 1; i++)
+                        {
+                            srcTensorGetters[i].BufferTrainingData();
+                        }
+
+                        labelGetter(ref label);
+                        labels.Add(label);
+
+                        if (((cursor.Position + 1) % options.BatchSize) == 0)
+                        {
+                            runner = new Runner(_session);
+
+                            // Add operations.
+                            runner.AddOperation(_trainStep);
+
+                            // Feed inputs.
+                            for (int i = 0; i < inputsForTraining.Length; i++)
+                                runner.AddInput(inputsForTraining[i], srcTensorGetters[i].GetBufferedBatchTensor());
+
+                            runner.AddOutputs(_bottleneckTensor.name);
+                            // Execute the graph.
+                            var t = runner.Run();
+                            var result = t[0].Data<float>();
+                            var featureLength = result.Length / options.BatchSize;
+                            for (int indexLocal = 0; indexLocal < options.BatchSize; indexLocal++)
+                            {
+                                var resultLocal = new float[featureLength];
+                                Array.Copy(result, indexLocal * featureLength, resultLocal, 0, featureLength);
+                                featurizedImages.Add(resultLocal);
+                            }
+
+                            //Marshal.FreeHGlobal(t[0]);
+                        }
+                    }
+                }
+            }
+
             for (int epoch = 0; epoch < options.Epoch; epoch++)
             {
                 using (var cursor = input.GetRowCursor(cols))
                 {
-                    var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes, tfInputShapes);
+                    
                     bool isDataLeft = false;
                     using (var ch = Host.Start("Training TensorFlow model..."))
                     using (var pch = Host.StartProgressChannel("TensorFlow training progress..."))
                     {
                         if (options.ReTrain)
                         {
+                            var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes, tfInputShapes);
                             float loss = 0;
                             float metric = 0;
                             pch.SetHeader(new ProgressHeader(new[] { "Loss", "Metric" }, new[] { "Epoch" }), (e) => e.SetProgress(0, epoch, options.Epoch));
@@ -426,17 +479,18 @@ namespace Microsoft.ML.Transforms
                         }
                         else
                         {
+                            var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes,
+                                new[] {new TensorShape(new[] { options.BatchSize, featurizedImages[0].Length }), tfInputShapes[1]});
+
                             pch.SetHeader(new ProgressHeader(null, new[] { "Epoch" }), (e) => e.SetProgress(0, epoch, options.Epoch));
 
-                            while (cursor.MoveNext())
+                            for(int localIndex = 0; localIndex < featurizedImages.Count; localIndex++)
                             {
-                                for (int i = 0; i < inputsForTraining.Length; i++)
-                                {
-                                    isDataLeft = true;
-                                    srcTensorGetters[i].BufferTrainingData();
-                                }
+                                srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
+                                srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
+                                isDataLeft = true;
 
-                                if (((cursor.Position + 1) % options.BatchSize) == 0)
+                                if (((localIndex + 1) % options.BatchSize) == 0)
                                 {
                                     isDataLeft = false;
                                     runner = new Runner(_session);
@@ -445,8 +499,8 @@ namespace Microsoft.ML.Transforms
                                     runner.AddOperation(_trainStep);
 
                                     // Feed inputs.
-                                    for (int i = 0; i < inputsForTraining.Length; i++)
-                                        runner.AddInput(inputsForTraining[i], srcTensorGetters[i].GetBufferedBatchTensor());
+                                    runner.AddInput(_bottleneckInput.name, srcTensorGetters[0].GetBufferedBatchTensor(new[] { (long)options.BatchSize, featurizedImages[0].Length }));
+                                    runner.AddInput(_labelTensor.name, srcTensorGetters[1].GetBufferedBatchTensor());
 
                                     // Execute the graph.
                                     var t = runner.Run();
@@ -463,12 +517,13 @@ namespace Microsoft.ML.Transforms
                 }
 
                 // Measure accuracy of the model.
-                if (options.TransferLearning && options.MeasureTrainAccuracy)
+                if (options.TransferLearning)
                 {
                     // Test on the training set to get accuracy.
                     using (var cursor = input.GetRowCursor(cols))
                     {
-                        var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes, tfInputShapes);
+                        var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes,
+                                new[] { new TensorShape(new[] { 1, featurizedImages[0].Length }), new TensorShape(new[] { 1 }) });
 
                         float accuracy = 0;
                         float crossEntropy = 0;
@@ -479,7 +534,7 @@ namespace Microsoft.ML.Transforms
                         {
                             pch.SetHeader(new ProgressHeader(new[] { "Accuracy", "Cross Entropy" }, new[] { "Epoch" }), (e) => e.SetProgress(0, epoch, options.Epoch));
 
-                            while (cursor.MoveNext())
+                            /*while (cursor.MoveNext())
                             {
                                 for (int i = 0; i < inputColIndices.Length; i++)
                                 {
@@ -499,6 +554,36 @@ namespace Microsoft.ML.Transforms
                                     crossEntropy += ce;
                                     batch++;
                                 }
+                            }*/
+
+                            for (int localIndex = 0; localIndex < featurizedImages.Count; localIndex++)
+                            {
+                                //srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
+                                //srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
+                                //isDataLeft = true;
+
+                                // if (((localIndex + 1) % options.BatchSize) == 0)
+                                //{
+
+                                srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
+                                srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
+                                isDataLeft = false;
+                                    runner = new Runner(_session);
+
+                                    // Add operations.
+                                    runner.AddOperation(_trainStep);
+
+                                // Feed inputs.
+                                runner.AddInput(_bottleneckInput.name, srcTensorGetters[0].GetBufferedBatchTensor(new[] { (long)1, featurizedImages[0].Length }));
+                                runner.AddInput(_labelTensor.name, srcTensorGetters[1].GetBufferedBatchTensor(new[] { (long)1 }));
+                                runner.AddOutputs(_evaluationStep.name);
+                                    runner.AddOutputs(_crossEntropy.name);
+
+                                    // Execute the graph.
+                                    var t = runner.Run();
+                                    accuracy += t[0].Data<float>()[0];
+                                    crossEntropy += t[1].Data<float>()[0];
+                                //}
                             }
 
                             if (isDataLeft)
@@ -507,7 +592,7 @@ namespace Microsoft.ML.Transforms
                                 ch.Warning("Not training on the last batch. The batch size is less than {0}.", options.BatchSize);
                             }
                             pch.Checkpoint(new double?[] { accuracy / batch, crossEntropy / batch });
-                            ch.Info(MessageSensitivity.None, $"Accuracy: {accuracy / batch}, Cross-Entropy: {crossEntropy / batch}");
+                            Console.WriteLine( $"ePOCH: {epoch} Accuracy: {accuracy / featurizedImages.Count}, Cross-Entropy: {crossEntropy / featurizedImages.Count}");
                         }
                     }
 
@@ -727,6 +812,14 @@ namespace Microsoft.ML.Transforms
             var (batch_size, bottleneck_tensor_size) = (bottleneckTensor.TensorShape.Dimensions[0], bottleneckTensor.TensorShape.Dimensions[1]);
             tf_with(tf.name_scope("input"), scope =>
             {
+                if (isTraining)
+                {
+                    _bottleneckInput = tf.placeholder_with_default(
+                        bottleneckTensor,
+                        shape: bottleneckTensor.TensorShape.Dimensions,
+                        name: "BottleneckInputPlaceholder");
+                }
+
                 _labelTensor = tf.placeholder(tf.int64, new TensorShape(batch_size), name: labelColumn);
             });
 
@@ -751,7 +844,7 @@ namespace Microsoft.ML.Transforms
 
                 tf_with(tf.name_scope("Wx_plus_b"), delegate
                 {
-                    var matmul = tf.matmul(bottleneckTensor, layerWeights);
+                    var matmul = tf.matmul(isTraining ? _bottleneckInput : bottleneckTensor, layerWeights);
                     logits = matmul + layerBiases;
                     tf.summary.histogram("pre_activations", logits);
                 });
@@ -774,7 +867,7 @@ namespace Microsoft.ML.Transforms
 
             tf_with(tf.name_scope("train"), delegate
             {
-                var optimizer = tf.train.GradientDescentOptimizer(learningRate);
+                 var optimizer = tf.train.GradientDescentOptimizer(learningRate);
                 _trainStep = optimizer.minimize(crossEntropyMean);
             });
 
@@ -914,7 +1007,7 @@ namespace Microsoft.ML.Transforms
                 // Configure bottleneck tensor based on the model.
                 if (arch == DnnEstimator.Architecture.ResnetV2101)
                     _bottleneckOperationName = "resnet_v2_101/SpatialSqueeze";
-                else if(arch == DnnEstimator.Architecture.InceptionV3)
+                else if (arch == DnnEstimator.Architecture.InceptionV3)
                     _bottleneckOperationName = "module_apply_default/hub_output/feature_vector/SpatialSqueeze";
 
                 if (arch == DnnEstimator.Architecture.ResnetV2101)
@@ -1365,7 +1458,12 @@ namespace Microsoft.ML.Transforms
                     Contracts.Assert(tensors.Length > 0);
 
                     for (int j = 0; j < activeOutputColNames.Length; j++)
+                    {
+                        //if (outputCache.Outputs.ContainsKey(activeOutputColNames[j]) && outputCache.Outputs[activeOutputColNames[j]] != IntPtr.Zero)
+                          //  Marshal.FreeHGlobal(outputCache.Outputs[activeOutputColNames[j]]);
+
                         outputCache.Outputs[activeOutputColNames[j]] = tensors[j];
+                    }
 
                     outputCache.Position = position;
                 }
@@ -1389,9 +1487,9 @@ namespace Microsoft.ML.Transforms
         {
             Tensor GetTensor();
 
-            void BufferTrainingData();
+            void BufferTrainingData(object values = null);
 
-            Tensor GetBufferedBatchTensor();
+            Tensor GetBufferedBatchTensor(long[] shape = null);
         }
 
         private class TensorValueGetter<T> : ITensorValueGetter
@@ -1442,13 +1540,20 @@ namespace Microsoft.ML.Transforms
                 }
             }
 
-            public void BufferTrainingData()
+            public void BufferTrainingData(object value = null)
             {
                 if (_keyType)
                 {
-                    var scalar = default(T);
-                    _srcgetter(ref scalar);
-                    _bufferedDataLong[_position++] = Convert.ToInt64(scalar) - 1;
+                    if (value == null)
+                    {
+                        var scalar = default(T);
+                        _srcgetter(ref scalar);
+                        _bufferedDataLong[_position++] = Convert.ToInt64(scalar) - 1;
+                    }
+                    else
+                    {
+                        _bufferedDataLong[_position++] = (long)value - 1;
+                    }
                 }
                 else
                 {
@@ -1458,7 +1563,7 @@ namespace Microsoft.ML.Transforms
                 }
             }
 
-            public Tensor GetBufferedBatchTensor()
+            public Tensor GetBufferedBatchTensor(long[] shape = null)
             {
                 if (_keyType)
                 {
@@ -1557,30 +1662,31 @@ namespace Microsoft.ML.Transforms
                 return CastDataAndReturnAsTensor(_denseData);
             }
 
-            private Tensor CastDataAndReturnAsTensor(T[] data)
+            private Tensor CastDataAndReturnAsTensor(T[] data, long[] dims = null)
             {
+                var shape = dims ?? _dims;
                 if (typeof(T) == typeof(sbyte))
-                    return new Tensor((sbyte[])(object)data, _dims, TF_DataType.TF_INT8);
+                    return new Tensor((sbyte[])(object)data, shape, TF_DataType.TF_INT8);
                 else if (typeof(T) == typeof(long))
-                    return new Tensor((long[])(object)data, _dims, TF_DataType.TF_INT64);
+                    return new Tensor((long[])(object)data, shape, TF_DataType.TF_INT64);
                 else if (typeof(T) == typeof(Int32))
-                    return new Tensor((Int32[])(object)data, _dims, TF_DataType.TF_INT32);
+                    return new Tensor((Int32[])(object)data, shape, TF_DataType.TF_INT32);
                 else if (typeof(T) == typeof(Int16))
-                    return new Tensor((Int16[])(object)data, _dims, TF_DataType.TF_INT16);
+                    return new Tensor((Int16[])(object)data, shape, TF_DataType.TF_INT16);
                 else if (typeof(T) == typeof(byte))
-                    return new Tensor((byte[])(object)data, _dims, TF_DataType.TF_UINT8);
+                    return new Tensor((byte[])(object)data, shape, TF_DataType.TF_UINT8);
                 else if (typeof(T) == typeof(ulong))
-                    return new Tensor((ulong[])(object)data, _dims, TF_DataType.TF_UINT64);
+                    return new Tensor((ulong[])(object)data, shape, TF_DataType.TF_UINT64);
                 else if (typeof(T) == typeof(UInt32))
-                    return new Tensor((UInt32[])(object)data, _dims, TF_DataType.TF_UINT32);
+                    return new Tensor((UInt32[])(object)data, shape, TF_DataType.TF_UINT32);
                 else if (typeof(T) == typeof(UInt16))
-                    return new Tensor((UInt16[])(object)data, _dims, TF_DataType.TF_UINT16);
+                    return new Tensor((UInt16[])(object)data, shape, TF_DataType.TF_UINT16);
                 else if (typeof(T) == typeof(bool))
-                    return new Tensor((bool[])(object)data, _dims, TF_DataType.TF_BOOL);
+                    return new Tensor((bool[])(object)data, shape, TF_DataType.TF_BOOL);
                 else if (typeof(T) == typeof(float))
-                    return new Tensor((float[])(object)data, _dims, TF_DataType.TF_FLOAT);
+                    return new Tensor((float[])(object)data, shape, TF_DataType.TF_FLOAT);
                 else if (typeof(T) == typeof(double))
-                    return new Tensor((double[])(object)data, _dims, TF_DataType.TF_DOUBLE);
+                    return new Tensor((double[])(object)data, shape, TF_DataType.TF_DOUBLE);
                 else if (typeof(T) == typeof(ReadOnlyMemory<char>))
                 {
                     byte[][] bytes = new byte[_vBuffer.Length][];
@@ -1595,17 +1701,25 @@ namespace Microsoft.ML.Transforms
                 return new Tensor(new NDArray(data, _tfShape));
             }
 
-            public void BufferTrainingData()
+            public void BufferTrainingData(object features = null)
             {
-                _srcgetter(ref _vBuffer);
-                _vBuffer.CopyTo(_bufferedData, _position);
-                _position += _vBuffer.Length;
+                if (features == null)
+                {
+                    _srcgetter(ref _vBuffer);
+                    _vBuffer.CopyTo(_bufferedData, _position);
+                    _position += _vBuffer.Length;
+                }
+                else
+                {
+                    Array.Copy((T[])features, 0, _bufferedData, _position, ((T[])features).Length);
+                    _position += ((T[])features).Length;
+                }
             }
 
-            public Tensor GetBufferedBatchTensor()
+            public Tensor GetBufferedBatchTensor(long[] dims = null)
             {
                 _position = 0;
-                var tensor = CastDataAndReturnAsTensor(_bufferedData);
+                var tensor = CastDataAndReturnAsTensor(_bufferedData, dims);
                 _bufferedData = new T[_bufferedDataSize];
                 return tensor;
             }
@@ -1855,7 +1969,7 @@ namespace Microsoft.ML.Transforms
         {
             _host.CheckValue(input, nameof(input));
             if (_transformer == null)
-                _transformer =  new DnnTransformer(_host, _options, _tensorFlowModel, input);
+                _transformer = new DnnTransformer(_host, _options, _tensorFlowModel, input);
 
             // Validate input schema.
             _transformer.GetOutputSchema(input.Schema);

@@ -17,11 +17,11 @@ namespace Samples.Dynamic
         {
             var mlContext = new MLContext(seed: 1);
 
-            var imagesDataFile = Path.GetDirectoryName(
-                Microsoft.ML.SamplesUtils.DatasetUtils.DownloadImages());
+            var imagesDataFile = @"C:\repo\machinelearning-samples\samples\csharp\getting-started\DeepLearning_TensorFlow_TransferLearning\ImageClassification.Train\assets\inputs\images";//Path.GetDirectoryName(
+                //Microsoft.ML.SamplesUtils.DatasetUtils.DownloadImages());
 
             var data = mlContext.Data.LoadFromEnumerable(
-                ImageNetData.LoadImagesFromDirectory(imagesDataFile, 4));
+                ImageNetData.LoadImagesFromDirectory(imagesDataFile, 1, true));
 
             data = mlContext.Data.ShuffleRows(data, 5);
             var pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
@@ -33,8 +33,8 @@ namespace Samples.Dynamic
                 .Append(mlContext.Transforms.ExtractPixels("Image",
                     interleavePixelColors: true))
                 .Append(mlContext.Model.ImageClassification("Image",
-                    "Label", arch: DnnEstimator.Architecture.InceptionV3, epoch: 4,
-                    batchSize: 4));
+                    "Label", arch: DnnEstimator.Architecture.InceptionV3, epoch: 100,
+                    batchSize: 100));
 
             var trainedModel = pipeline.Fit(data);
             var predicted = trainedModel.Transform(data);
