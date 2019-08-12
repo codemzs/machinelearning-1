@@ -34,7 +34,11 @@ namespace Samples.Dynamic
                     interleavePixelColors: true))
                 .Append(mlContext.Model.ImageClassification("Image",
                     "Label", arch: DnnEstimator.Architecture.InceptionV3, epoch: 100,
-                    batchSize: 100));
+                    batchSize: 100, statisticsCallback:
+                        (epoch, accuracy, crossEntropy) => Console.WriteLine(
+                            $"Epoch: {epoch}, " +
+                            $"Accuracy: {accuracy * 100}%, " +
+                            $"Cross-Entropy: {crossEntropy}")));
 
             var trainedModel = pipeline.Fit(data);
             var predicted = trainedModel.Transform(data);

@@ -360,7 +360,6 @@ namespace Microsoft.ML.Transforms
             Saver trainSaver = null;
             FileWriter trainWriter = null;
             Tensor merged = null;
-            Runner testSetRunner = null;
             Runner validationSetRunner = null;
             if (options.TransferLearning)
             {
@@ -426,7 +425,7 @@ namespace Microsoft.ML.Transforms
             {
                 using (var cursor = input.GetRowCursor(cols))
                 {
-                    
+
                     bool isDataLeft = false;
                     using (var ch = Host.Start("Training TensorFlow model..."))
                     using (var pch = Host.StartProgressChannel("TensorFlow training progress..."))
@@ -480,11 +479,11 @@ namespace Microsoft.ML.Transforms
                         else
                         {
                             var srcTensorGetters = GetTensorValueGetters(cursor, inputColIndices, isInputVector, tfInputTypes,
-                                new[] {new TensorShape(new[] { options.BatchSize, featurizedImages[0].Length }), tfInputShapes[1]});
+                                new[] { new TensorShape(new[] { options.BatchSize, featurizedImages[0].Length }), tfInputShapes[1] });
 
                             pch.SetHeader(new ProgressHeader(null, new[] { "Epoch" }), (e) => e.SetProgress(0, epoch, options.Epoch));
 
-                            for(int localIndex = 0; localIndex < featurizedImages.Count; localIndex++)
+                            for (int localIndex = 0; localIndex < featurizedImages.Count; localIndex++)
                             {
                                 srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
                                 srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
@@ -517,7 +516,7 @@ namespace Microsoft.ML.Transforms
                 }
 
                 // Measure accuracy of the model.
-                if (options.TransferLearning)
+                if (options.TransferLearning && options.StatisticsCallback != null && epoch % options.StatisticsFrequency == 0)
                 {
                     // Test on the training set to get accuracy.
                     using (var cursor = input.GetRowCursor(cols))
@@ -528,62 +527,32 @@ namespace Microsoft.ML.Transforms
                         float accuracy = 0;
                         float crossEntropy = 0;
                         bool isDataLeft = false;
-                        int batch = 0;
                         using (var ch = Host.Start("Test TensorFlow model..."))
                         using (var pch = Host.StartProgressChannel("TensorFlow testing progress..."))
                         {
                             pch.SetHeader(new ProgressHeader(new[] { "Accuracy", "Cross Entropy" }, new[] { "Epoch" }), (e) => e.SetProgress(0, epoch, options.Epoch));
-
-                            /*while (cursor.MoveNext())
-                            {
-                                for (int i = 0; i < inputColIndices.Length; i++)
-                                {
-                                    isDataLeft = true;
-                                    srcTensorGetters[i].BufferTrainingData();
-                                }
-
-                                if (((cursor.Position + 1) % options.BatchSize) == 0)
-                                {
-                                    isDataLeft = false;
-                                    testSetRunner = new Runner(_session);
-                                    testSetRunner.AddOutputs(_evaluationStep.name);
-                                    testSetRunner.AddOutputs(_crossEntropy.name);
-                                    testSetRunner.AddOutputs(_bottleneckTensor.name);
-                                    var (acc, ce) = ExecuteGraphAndRetrieveMetrics(inputsForTraining, srcTensorGetters, testSetRunner);
-                                    accuracy += acc;
-                                    crossEntropy += ce;
-                                    batch++;
-                                }
-                            }*/
-
                             for (int localIndex = 0; localIndex < featurizedImages.Count; localIndex++)
                             {
-                                //srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
-                                //srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
-                                //isDataLeft = true;
-
-                                // if (((localIndex + 1) % options.BatchSize) == 0)
-                                //{
-
                                 srcTensorGetters[0].BufferTrainingData(featurizedImages[localIndex]);
                                 srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
                                 isDataLeft = false;
-                                    runner = new Runner(_session);
+                                runner = new Runner(_session);
 
-                                    // Add operations.
-                                    runner.AddOperation(_trainStep);
+                                // Add operations.
+                                runner.AddOperation(_trainStep);
 
                                 // Feed inputs.
                                 runner.AddInput(_bottleneckInput.name, srcTensorGetters[0].GetBufferedBatchTensor(new[] { (long)1, featurizedImages[0].Length }));
                                 runner.AddInput(_labelTensor.name, srcTensorGetters[1].GetBufferedBatchTensor(new[] { (long)1 }));
-                                runner.AddOutputs(_evaluationStep.name);
-                                    runner.AddOutputs(_crossEntropy.name);
 
-                                    // Execute the graph.
-                                    var t = runner.Run();
-                                    accuracy += t[0].Data<float>()[0];
-                                    crossEntropy += t[1].Data<float>()[0];
-                                //}
+                                // Request outputs.
+                                runner.AddOutputs(_evaluationStep.name);
+                                runner.AddOutputs(_crossEntropy.name);
+
+                                // Execute the graph.
+                                var t = runner.Run();
+                                accuracy += t[0].Data<float>()[0];
+                                crossEntropy += t[1].Data<float>()[0];
                             }
 
                             if (isDataLeft)
@@ -591,8 +560,11 @@ namespace Microsoft.ML.Transforms
                                 isDataLeft = false;
                                 ch.Warning("Not training on the last batch. The batch size is less than {0}.", options.BatchSize);
                             }
-                            pch.Checkpoint(new double?[] { accuracy / batch, crossEntropy / batch });
-                            Console.WriteLine( $"ePOCH: {epoch} Accuracy: {accuracy / featurizedImages.Count}, Cross-Entropy: {crossEntropy / featurizedImages.Count}");
+
+                            accuracy /= featurizedImages.Count;
+                            crossEntropy /= featurizedImages.Count;
+                            pch.Checkpoint(new double?[] { accuracy, crossEntropy });
+                            options.StatisticsCallback(epoch, accuracy, crossEntropy);
                         }
                     }
 
@@ -867,7 +839,7 @@ namespace Microsoft.ML.Transforms
 
             tf_with(tf.name_scope("train"), delegate
             {
-                 var optimizer = tf.train.GradientDescentOptimizer(learningRate);
+                var optimizer = tf.train.GradientDescentOptimizer(learningRate);
                 _trainStep = optimizer.minimize(crossEntropyMean);
             });
 
@@ -1460,7 +1432,7 @@ namespace Microsoft.ML.Transforms
                     for (int j = 0; j < activeOutputColNames.Length; j++)
                     {
                         //if (outputCache.Outputs.ContainsKey(activeOutputColNames[j]) && outputCache.Outputs[activeOutputColNames[j]] != IntPtr.Zero)
-                          //  Marshal.FreeHGlobal(outputCache.Outputs[activeOutputColNames[j]]);
+                        //  Marshal.FreeHGlobal(outputCache.Outputs[activeOutputColNames[j]]);
 
                         outputCache.Outputs[activeOutputColNames[j]] = tensors[j];
                     }
@@ -1747,6 +1719,14 @@ namespace Microsoft.ML.Transforms
         };
 
         /// <summary>
+        /// Callback that returns DNN statistics during training phase.
+        /// </summary>
+        /// <param name="epoch">The epoch value during training.</param>
+        /// <param name="accuracy">Accuracy of the model on a dataset at the given epoch.</param>
+        /// <param name="crossEntropy">Cross entropy of the model at a given epoch.</param>
+        public delegate void DnnStatistics(int epoch, float accuracy, float crossEntropy);
+
+        /// <summary>
         /// The options for the <see cref="DnnTransformer"/>.
         /// </summary>
         internal sealed class Options : TransformInputBase
@@ -1890,10 +1870,28 @@ namespace Microsoft.ML.Transforms
             public string CheckpointName = "_retrain_checkpoint";
 
             /// <summary>
-            /// Use train set to measure model accuracy between each epoch.
+            /// Callback to report statistics on accuracy/cross entropy during training phase.
             /// </summary>
-            [Argument(ArgumentType.AtMostOnce, HelpText = "Use train set to measure model accuracy between each epoch.", SortOrder = 15)]
-            public bool MeasureTrainAccuracy = false;
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Callback to report statistics on accuracy/entropy during training phase.", SortOrder = 15)]
+            public DnnStatistics StatisticsCallback = null;
+
+            /// <summary>
+            /// Frequency of epochs at which statistics on training phase should be reported.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Frequency of epochs at which statistics on training/validation phase should be reported.", SortOrder = 15)]
+            public int StatisticsFrequency = 1;
+
+            /// <summary>
+            /// Indicates the choice DNN training framework. Currently only TensorFlow is supported.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Indicates the choice DNN training framework. Currently only TensorFlow is supported.", SortOrder = 15)]
+            public DnnFramework Framework = DnnFramework.Tensorflow;
+
+            /// <summary>
+            /// Indicates the path where the newly retrained model should be saved.
+            /// </summary>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Indicates the path where the newly retrained model should be saved.", SortOrder = 15)]
+            public string ModelSavePath = null;
         }
 
         private readonly IHost _host;

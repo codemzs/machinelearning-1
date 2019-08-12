@@ -85,15 +85,17 @@ namespace Microsoft.ML
         /// <param name="catalog"></param>
         /// <param name="featuresColumnName">The name of the input features column.</param>
         /// <param name="labelColumnName">The name of the labels column.</param>
-        /// <param name="outputGraphPath">Optional name of the path where a copy new graph should be saved. The graph will be saved as part of model.</param>
         /// <param name="scoreColumnName">The name of the output score column.</param>
         /// <param name="predictedLabelColumnName">The name of the output predicted label columns.</param>
-        /// <param name="checkpointName">The name of the prefix for checkpoint files.</param>
         /// <param name="arch">The architecture of the image recognition DNN model.</param>
-        /// <param name="dnnFramework">The backend DNN framework to use, currently only Tensorflow is supported.</param>
-        /// <param name="epoch">Number of training epochs.</param>
+        /// <param name="epoch">Number of training iterations. Each iteration/epoch refers to one pass over the dataset.</param>
         /// <param name="batchSize">The batch size for training.</param>
         /// <param name="learningRate">The learning rate for training.</param>
+        /// <param name="statisticsCallback">Callback for reporting model statistics during training phase.</param>
+        /// <param name="statisticFrequency">Indicates the frequency of epochs at which to report model statistics during training phase.</param>
+        /// <param name="framework">Indicates the choice of DNN training framework. Currently only tensorflow is supported.</param>
+        /// <param name="modelSavePath">Optional name of the path where a copy new graph should be saved. The graph will be saved as part of model.</param>
+        /// <param name="checkpointName">The name of the prefix for checkpoint files.</param>
         /// <remarks>
         /// The support for image classification is under preview.
         /// </remarks>
@@ -101,15 +103,17 @@ namespace Microsoft.ML
             this ModelOperationsCatalog catalog,
             string featuresColumnName,
             string labelColumnName,
-            string outputGraphPath = null,
             string scoreColumnName = "Score",
             string predictedLabelColumnName = "PredictedLabel",
-            string checkpointName = "_retrain_checkpoint",
-            Architecture arch = Architecture.ResnetV2101,
-            DnnFramework dnnFramework = DnnFramework.Tensorflow,
+            Architecture arch = Architecture.InceptionV3,
             int epoch = 10,
             int batchSize = 20,
-            float learningRate = 0.01f)
+            float learningRate = 0.01f,
+            DnnStatistics statisticsCallback = null,
+            int statisticFrequency = 1,
+            DnnFramework framework = DnnFramework.Tensorflow,
+            string modelSavePath = null,
+            string checkpointName = "_retrain_checkpoint")
         {
             var options = new Options()
             {
@@ -127,7 +131,10 @@ namespace Microsoft.ML
                 PredictedLabelColumnName = predictedLabelColumnName,
                 CheckpointName = checkpointName,
                 Arch = arch,
-                MeasureTrainAccuracy = false
+                StatisticsCallback = statisticsCallback,
+                StatisticsFrequency = statisticFrequency,
+                Framework = framework,
+                ModelSavePath = modelSavePath
             };
 
             if (!File.Exists(options.ModelLocation))
