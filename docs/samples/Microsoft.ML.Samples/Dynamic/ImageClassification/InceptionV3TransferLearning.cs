@@ -17,8 +17,7 @@ namespace Samples.Dynamic
         {
             var mlContext = new MLContext(seed: 1);
 
-            var imagesDataFile = @"C:\repo\machinelearning-samples\samples\csharp\getting-started\DeepLearning_TensorFlow_TransferLearning\ImageClassification.Train\assets\inputs\images";//Path.GetDirectoryName(
-                //Microsoft.ML.SamplesUtils.DatasetUtils.DownloadImages());
+            var imagesDataFile = @"E:\machinelearning-samples\samples\csharp\getting-started\DeepLearning_TensorFlow_TransferLearning\ImageClassification.Train\assets\inputs\images";//Path.GetDirectoryName(Microsoft.ML.SamplesUtils.DatasetUtils.DownloadImages());
 
             var data = mlContext.Data.LoadFromEnumerable(
                 ImageNetData.LoadImagesFromDirectory(imagesDataFile, 1, true));
@@ -50,13 +49,19 @@ namespace Samples.Dynamic
             // Create prediction function and test prediction
             var predictFunction = mlContext.Model
                 .CreatePredictionEngine<ImageNetData, ImagePrediction>(trainedModel);
+            var example = ImageNetData.LoadImagesFromDirectory(imagesDataFile, 1, true)
+                .First();
 
-            var prediction = predictFunction
-                .Predict(ImageNetData.LoadImagesFromDirectory(imagesDataFile, 4)
-                .First());
+            var prediction = predictFunction.Predict(example);
+
+            // Find the original label values.
+            VBuffer<ReadOnlyMemory<char>> keys = default;
+            predicted.Schema["Label"].GetKeyValues(ref keys);
+            var originalLabels = keys.DenseValues().ToArray();
 
             Console.WriteLine($"Scores : [{string.Join(",", prediction.Score)}], " +
-                $"Predicted Label : {prediction.PredictedLabel}");
+                $"Actual Label: {example.Label} " +
+                $"Predicted Label : {originalLabels[prediction.PredictedLabel]}");
 
         }
     }

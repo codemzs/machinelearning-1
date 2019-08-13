@@ -396,9 +396,6 @@ namespace Microsoft.ML.Transforms
                         {
                             runner = new Runner(_session);
 
-                            // Add operations.
-                            runner.AddOperation(_trainStep);
-
                             // Feed inputs.
                             for (int i = 0; i < inputsForTraining.Length; i++)
                                 runner.AddInput(inputsForTraining[i], srcTensorGetters[i].GetBufferedBatchTensor());
@@ -537,9 +534,6 @@ namespace Microsoft.ML.Transforms
                                 srcTensorGetters[1].BufferTrainingData(labels[localIndex]);
                                 isDataLeft = false;
                                 runner = new Runner(_session);
-
-                                // Add operations.
-                                runner.AddOperation(_trainStep);
 
                                 // Feed inputs.
                                 runner.AddInput(_bottleneckInput.name, srcTensorGetters[0].GetBufferedBatchTensor(new[] { (long)1, featurizedImages[0].Length }));
@@ -718,7 +712,7 @@ namespace Microsoft.ML.Transforms
                 var (_, _, groundTruthInput, finalTensor) = AddFinalRetrainOps(classCount, options.LabelColumn,
                     options.ScoreColumnName, options.LearningRate, bottleneckTensor, false);
 
-                tf.train.Saver().restore(evalSess, Path.Combine(Directory.GetCurrentDirectory(), _checkpointPath));
+                tf.train.Saver().restore(evalSess, _checkpointPath);
                 (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
             });
 
@@ -1468,7 +1462,7 @@ namespace Microsoft.ML.Transforms
         {
             private readonly ValueGetter<T> _srcgetter;
             private readonly T[] _bufferedData;
-            private readonly Int64[] _bufferedDataLong;
+            private Int64[] _bufferedDataLong;
             private readonly TensorShape _tfShape;
             private int _position;
             private readonly bool _keyType;
@@ -1540,6 +1534,7 @@ namespace Microsoft.ML.Transforms
                 if (_keyType)
                 {
                     var tensor = new Tensor(_bufferedDataLong, _dims, TF_DataType.TF_INT64);
+                    _bufferedDataLong = new long[_bufferedDataLong.Length];
                     _position = 0;
                     return tensor;
                 }

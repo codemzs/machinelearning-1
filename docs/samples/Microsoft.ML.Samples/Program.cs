@@ -24,7 +24,7 @@ namespace Microsoft.ML.Samples
             }
 
             Console.WriteLine("Number of samples that ran without any exception: " + samples);*/
-            InceptionV3TransferLearning.Example();
+            InceptionV3TransferLearningTrainTestSplit.Example();
         }
     }
 }
