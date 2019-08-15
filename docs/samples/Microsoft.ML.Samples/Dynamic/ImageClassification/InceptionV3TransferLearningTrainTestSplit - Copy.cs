@@ -1,6 +1,9 @@
-﻿using System;
+﻿
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Transforms;
 using static Microsoft.ML.DataOperationsCatalog;
@@ -9,17 +12,19 @@ using Microsoft.ML.Data;
 
 namespace Samples.Dynamic
 {
-    public class InceptionV3TransferLearningTrainTestSplit
+    public class InceptionV3TransferLearningTrainTestSplit2
     {
         public static void Example()
         {
             string assetsPath = @"E:\machinelearning-samples\samples\csharp\getting-started\DeepLearning_TensorFlow_TransferLearning\ImageClassification.Train\assets";
 
-            string imagesFolder = Path.Combine(assetsPath, "inputs", "images_flower_photos_small_set");
+            //string imagesDownloadFolder = Path.Combine(assetsPath, "inputs", "images");
+            string imagesFolder = Path.Combine(assetsPath, "inputs", "images_flower_photos_small_set"); // "flower_photos"
             string imagesForPredictions = Path.Combine(assetsPath, "inputs", "images-for-predictions", "FlowersForPredictions");
 
             try
             {
+
                 MLContext mlContext = new MLContext(seed: 1);
 
                 //Load all the original images info
@@ -51,10 +56,10 @@ namespace Samples.Dynamic
                                                                                         $"Accuracy: {accuracy * 100}%, " +
                                                                                         $"Cross-Entropy: {crossEntropy}")));
 
-                Console.WriteLine("*** Training the image classification model with" +
-                    " DNN Transfer Learning on top of the selected pre-trained model/architecture ***");
 
-                // Measuring time
+                Console.WriteLine("*** Training the image classification model with DNN Transfer Learning on top of the selected pre-trained model/architecture ***");
+
+                // Measuring training time
                 var watch = System.Diagnostics.Stopwatch.StartNew();
 
                 var trainedModel = pipeline.Fit(trainDataset);
@@ -64,40 +69,9 @@ namespace Samples.Dynamic
 
                 Console.WriteLine("Training with transfer learning took: " + (elapsedMs / 1000).ToString() + " seconds");
 
-                Console.WriteLine("Predicting and evaluating quality...");
+                EvaluateModel(mlContext, testDataset, trainedModel);
 
-                // Measuring time
-                var watch2 = System.Diagnostics.Stopwatch.StartNew();
-
-                var predictions = trainedModel.Transform(testDataset);
-                var metrics = mlContext.MulticlassClassification.Evaluate(predictions);
-
-                Console.WriteLine($"Micro-accuracy: {metrics.MicroAccuracy}," +
-                                  $"macro-accuracy = {metrics.MacroAccuracy}");
-
-                watch2.Stop();
-                long elapsed2Ms = watch2.ElapsedMilliseconds;
-
-                Console.WriteLine("Predicting and Evaluation took: " + (elapsed2Ms / 1000).ToString() + " seconds");
-
-
-                // Create prediction function and test prediction
-                var predictionEngine = mlContext.Model
-                    .CreatePredictionEngine<ImageData, ImagePrediction>(trainedModel);
-
-                IEnumerable<ImageData> testImages = LoadImagesFromDirectory(imagesForPredictions, false);
-                ImageData imageToPredict = testImages.First();
-
-                var prediction = predictionEngine.Predict(imageToPredict);
-
-                // Find the original label values.
-                VBuffer<ReadOnlyMemory<char>> keys = default;
-                predictions.Schema["Label"].GetKeyValues(ref keys);
-                var originalLabels = keys.DenseValues().ToArray();
-
-                Console.WriteLine($"Scores : [{string.Join(",", prediction.Score)}], " +
-                    $"Actual Label: {imageToPredict.Label} " +
-                    $"Predicted Label : {originalLabels[prediction.PredictedLabel]}");
+                TrySinglePrediction(imagesForPredictions, mlContext, trainedModel);
             }
             catch (Exception ex)
             {
@@ -106,6 +80,57 @@ namespace Samples.Dynamic
 
             Console.WriteLine("Press any key to finish");
             Console.ReadKey();
+        }
+
+        private static void TrySinglePrediction(string imagesForPredictions, MLContext mlContext, TransformerChain<DnnTransformer> trainedModel)
+        {
+            // Create prediction function to try one prediction
+            var predictionEngine = mlContext.Model
+                .CreatePredictionEngine<ImageData, ImagePrediction>(trainedModel);
+
+            IEnumerable<ImageData> testImages = LoadImagesFromDirectory(imagesForPredictions, false);
+            ImageData imageToPredict = new ImageData
+            {
+                ImagePath = testImages.First().ImagePath
+            };
+
+            var prediction = predictionEngine.Predict(imageToPredict);
+
+            // Find the original label names.
+            VBuffer<ReadOnlyMemory<char>> keys = default;
+            predictionEngine.OutputSchema["Label"].GetKeyValues(ref keys);
+
+            var originalLabels = keys.DenseValues().ToArray();
+            var index = prediction.PredictedLabel;
+
+            Console.WriteLine($"ImageFile : [{Path.GetFileName(imageToPredict.ImagePath)}], " +
+                              $"Scores : [{string.Join(",", prediction.Score)}], " +
+                              $"Predicted Label : {originalLabels[index]}");
+        }
+
+
+        private static void EvaluateModel(MLContext mlContext, IDataView testDataset, ITransformer trainedModel)
+        {
+            Console.WriteLine("Making bulk predictions and evaluating model's quality...");
+
+            // Measuring time
+            var watch2 = System.Diagnostics.Stopwatch.StartNew();
+
+            IDataView predictions = trainedModel.Transform(testDataset);
+            var metrics = mlContext.MulticlassClassification.Evaluate(predictions);
+
+            Console.WriteLine($"Micro-accuracy: {metrics.MicroAccuracy}," +
+                              $"macro-accuracy = {metrics.MacroAccuracy}");
+
+            watch2.Stop();
+            long elapsed2Ms = watch2.ElapsedMilliseconds;
+
+            Console.WriteLine("Predicting and Evaluation took: " + (elapsed2Ms / 1000).ToString() + " seconds");
+
+            // Find out labels list
+            //VBuffer<ReadOnlyMemory<char>> keys = default;
+            //predictions.Schema["Label"].GetKeyValues(ref keys);
+            //var originalLabels = keys.DenseValues().ToArray();
         }
 
         public static IEnumerable<ImageData> LoadImagesFromDirectory(string folder, bool useFolderNameasLabel = true)
@@ -150,5 +175,17 @@ namespace Samples.Dynamic
             [LoadColumn(1)]
             public string Label;
         }
+
+        public class ImagePrediction
+        {
+            [ColumnName("Score")]
+            public float[] Score;
+
+
+
+            [ColumnName("PredictedLabel")]
+            public Int64 PredictedLabel;
+        }
     }
 }
+
