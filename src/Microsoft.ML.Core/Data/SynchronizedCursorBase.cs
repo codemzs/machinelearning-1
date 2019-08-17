@@ -24,6 +24,7 @@ namespace Microsoft.ML.Data
         /// implementors) to get this root cursor. But, this can only be done by exposing this root cursor, as we do here.
         /// Internal code should be quite careful in using this as the potential for misuse is quite high.
         /// </summary>
+        [BestFriend]
         internal readonly DataViewRowCursor Root;
         private bool _disposed;
 
@@ -65,7 +66,7 @@ namespace Microsoft.ML.Data
             _disposed = true;
         }
 
-        public sealed override bool MoveNext() => Root.MoveNext();
+        public override bool MoveNext() => Root.MoveNext();
 
         public sealed override ValueGetter<DataViewRowId> GetIdGetter() => Input.GetIdGetter();
     }

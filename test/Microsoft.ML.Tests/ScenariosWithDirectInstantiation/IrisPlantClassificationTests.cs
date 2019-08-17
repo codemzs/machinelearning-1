@@ -2,15 +2,50 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Microsoft.ML.Data;
 using Microsoft.ML.RunTests;
 using Microsoft.ML.Trainers;
+using Microsoft.ML.Transforms;
 using Xunit;
 
 namespace Microsoft.ML.Scenarios
 {
     public partial class ScenariosTests
     {
+        [Fact]
+        public void GenerateRowsTransformTest()
+        {
+            var mlContext = new MLContext(seed: 1);
+
+            var reader = mlContext.Data.CreateTextLoader(columns: new[]
+                {
+                    new TextLoader.Column("Label", DataKind.Single, 0),
+                    new TextLoader.Column("SepalLength", DataKind.Single, 1),
+                    new TextLoader.Column("SepalWidth", DataKind.Single, 2),
+                    new TextLoader.Column("PetalLength", DataKind.Single, 3),
+                    new TextLoader.Column("PetalWidth", DataKind.Single, 4)
+                }
+            );
+
+            var cursor = new GenerateRowsTransform(mlContext,
+                    new GenerateRowsTransform.Options { Columns = new [] { new GenerateRowsTransform.Column {Name = "R" } } },
+                    reader.Load(GetDataPath(TestDatasets.iris.trainFilename)))
+                .GetRowCursorForAllColumns();
+
+            var labelGetter = cursor.GetGetter<float>(cursor.Schema["Label"]);
+            float label = -1;
+            List<float> labels = new List<float>();
+            while (cursor.MoveNext())
+            {
+                labelGetter(ref label);
+                labels.Add(label);
+            }
+
+        }
+
         [Fact]
         public void TrainAndPredictIrisModelUsingDirectInstantiationTest()
         {
