@@ -34,7 +34,7 @@ namespace Samples.Dynamic
                 .Append(mlContext.Transforms.ExtractPixels("Image",
                     interleavePixelColors: true))
                 .Append(mlContext.Model.ImageClassification("Image",
-                    "Label", arch: DnnEstimator.Architecture.ResnetV2101, epoch: 4,
+                    "Label", arch: ImageClassificationEstimator.Architecture.ResnetV2101, epoch: 4,
                     batchSize: 4));
 
             var trainedModel = pipeline.Fit(data);
