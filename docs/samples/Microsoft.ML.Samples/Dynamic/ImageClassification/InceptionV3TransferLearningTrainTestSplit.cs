@@ -82,7 +82,12 @@ namespace Samples.Dynamic
                 VBuffer<ReadOnlyMemory<char>> keys = default;
                 loadedModel.GetOutputSchema(schema)["Label"].GetKeyValues(ref keys);
 
+                watch = System.Diagnostics.Stopwatch.StartNew();
                 TrySinglePrediction(imagesForPredictions, mlContext, loadedModel, keys.DenseValues().ToArray());
+                watch.Stop();
+                elapsedMs = watch.ElapsedMilliseconds;
+
+                Console.WriteLine("Prediction engine took: " + (elapsedMs / 1000).ToString() + " seconds");
             }
             catch (Exception ex)
             {
