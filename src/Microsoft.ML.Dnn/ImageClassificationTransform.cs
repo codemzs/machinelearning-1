@@ -340,7 +340,7 @@ namespace Microsoft.ML.Transforms
             ImageClassificationMetricsCallback statisticsCallback = options.MetricsCallback;
             var trainingSet = GetShuffledData(trainBottleneckFilePath);
             IDataView validationSet = null;
-            if (!string.IsNullOrEmpty(validationSetBottleneckFilePath))
+            if (options.ValidationSet != null && !string.IsNullOrEmpty(validationSetBottleneckFilePath))
                 validationSet = GetShuffledData(validationSetBottleneckFilePath);
 
             long label = long.MaxValue;
@@ -369,6 +369,7 @@ namespace Microsoft.ML.Transforms
             {
                 validationEvalRunner = new Runner(_session);
                 validationEvalRunner.AddOutputs(_evaluationStep.name);
+                validationEvalRunner.AddInput(_bottleneckInput.name).AddInput(_labelTensor.name);
             }
 
             runner.AddOperation(_trainStep);
@@ -384,7 +385,6 @@ namespace Microsoft.ML.Transforms
 
             runner.AddInput(_bottleneckInput.name).AddInput(_labelTensor.name);
             testEvalRunner.AddInput(_bottleneckInput.name).AddInput(_labelTensor.name);
-            validationEvalRunner.AddInput(_bottleneckInput.name).AddInput(_labelTensor.name);
             Dictionary<long, int> classStatsTrain = new Dictionary<long, int>();
             Dictionary<long, int> classStatsValidate = new Dictionary<long, int>();
             for (int index = 0; index < _classCount; index += 1)
@@ -1195,8 +1195,6 @@ namespace Microsoft.ML.Transforms
                 var input = _options.InputColumns[i];
                 if (!inputSchema.TryFindColumn(input, out var col))
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input);
-                if (!(col.Kind == SchemaShape.Column.VectorKind.Vector))
-                    throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, "vector", col.GetTypeString());
                 var expectedType = DnnUtils.Tf2MlNetType(_tfInputTypes[i]);
                 if (col.ItemType != expectedType)
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, expectedType.ToString(), col.ItemType.ToString());

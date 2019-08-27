@@ -33,29 +33,29 @@ namespace Samples.Dynamic
                 IEnumerable<ImageData> images = LoadImagesFromDirectory(folder: imagesFolder, useFolderNameasLabel: true);
                 IDataView fullImagesDataset = mlContext.Data.LoadFromEnumerable(images);
                 IDataView shuffledFullImagesDataset = mlContext.Data.ShuffleRows(fullImagesDataset);
-                shuffledFullImagesDataset = mlContext.Transforms.Conversion.MapValueToKey("Label")
-                    .Fit(shuffledFullImagesDataset)
-                    .Transform(shuffledFullImagesDataset);
+                //shuffledFullImagesDataset = mlContext.Transforms.Conversion.MapValueToKey("Label")
+                    //.Fit(shuffledFullImagesDataset)
+                    //.Transform(shuffledFullImagesDataset);
 
                 // Find the original label names.
-                VBuffer<ReadOnlyMemory<char>> keys = default;
-                shuffledFullImagesDataset.Schema["Label"].GetKeyValues(ref keys);
-                var originalLabels = keys.DenseValues().ToArray();
+                //VBuffer<ReadOnlyMemory<char>> keys = default;
+                //shuffledFullImagesDataset.Schema["Label"].GetKeyValues(ref keys);
+                //var originalLabels = keys.DenseValues().ToArray();
 
                 // Split the data 80:20 into train and test sets, train and evaluate.
                 TrainTestData trainTestData = mlContext.Data.TrainTestSplit(shuffledFullImagesDataset, testFraction: 0.1, seed: 1);
                 IDataView trainDataset = trainTestData.TrainSet;
                 IDataView testDataset = trainTestData.TestSet;
 
-                var pipeline = mlContext.Model.ImageClassification("ImagePath", "Label",
+                var pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label").Append(mlContext.Model.ImageClassification("ImagePath", "Label",
                             arch: ImageClassificationEstimator.Architecture.InceptionV3,
-                            epoch: 10, //An epoch is one learning cycle where the learner sees the whole training data set.
-                            batchSize: 10, // batchSize sets then number of images to feed the model at a time
+                            epoch: 100, //An epoch is one learning cycle where the learner sees the whole training data set.
+                            batchSize: 100, // batchSize sets then number of images to feed the model at a time
                             learningRate: 0.01f,
                             metricsCallback: (metrics) => Console.WriteLine(metrics),
-                            validationSet: testDataset,
-                            reuseTrainSetBottleneckCachedValues: false,
-                            reuseValidationSetBottleneckCachedValues: false);
+                            validationSet: null));//,
+                            //reuseTrainSetBottleneckCachedValues: false,
+                            //reuseValidationSetBottleneckCachedValues: false));
 
 
                 Console.WriteLine("*** Training the image classification model with DNN Transfer Learning on top of the selected pre-trained model/architecture ***");
@@ -73,12 +73,16 @@ namespace Samples.Dynamic
                 mlContext.Model.Save(trainedModel, trainDataset.Schema, "model.zip");
 
                 ITransformer loadedModel;
+                DataViewSchema schema;
                 using (var file = File.OpenRead("model.zip"))
-                    loadedModel = mlContext.Model.Load(file, out DataViewSchema schema);
+                    loadedModel = mlContext.Model.Load(file, out schema);
 
                 EvaluateModel(mlContext, testDataset, loadedModel);
 
-                TrySinglePrediction(imagesForPredictions, mlContext, loadedModel, originalLabels);
+                VBuffer<ReadOnlyMemory<char>> keys = default;
+                loadedModel.GetOutputSchema(schema)["Label"].GetKeyValues(ref keys);
+
+                TrySinglePrediction(imagesForPredictions, mlContext, loadedModel, keys.DenseValues().ToArray());
             }
             catch (Exception ex)
             {
