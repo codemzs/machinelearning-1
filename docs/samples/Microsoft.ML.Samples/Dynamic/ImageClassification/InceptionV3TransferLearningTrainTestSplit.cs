@@ -50,12 +50,12 @@ namespace Samples.Dynamic
                 var pipeline = mlContext.Model.ImageClassification("ImagePath", "Label",
                             arch: ImageClassificationEstimator.Architecture.ResnetV2101,
                             epoch: 100, //An epoch is one learning cycle where the learner sees the whole training data set.
-                            batchSize: 10, // batchSize sets then number of images to feed the model at a time
+                            batchSize: 100, // batchSize sets then number of images to feed the model at a time
                             learningRate: 0.01f,
                             metricsCallback: (metrics) => Console.WriteLine(metrics),
                             validationSet: testDataset,
-                            reuseTrainSetBottleneckCachedValues: false,
-                            reuseValidationSetBottleneckCachedValues: false);
+                            reuseTrainSetBottleneckCachedValues: true,
+                            reuseValidationSetBottleneckCachedValues: true);
 
 
                 Console.WriteLine("*** Training the image classification model with DNN Transfer Learning on top of the selected pre-trained model/architecture ***");
