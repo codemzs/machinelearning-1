@@ -1,6 +1,5 @@
 ﻿
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -49,8 +48,8 @@ namespace Samples.Dynamic
 
                 var pipeline = mlContext.Model.ImageClassification("ImagePath", "Label",
                             arch: ImageClassificationEstimator.Architecture.ResnetV2101,
-                            epoch: 100, //An epoch is one learning cycle where the learner sees the whole training data set.
-                            batchSize: 10, // batchSize sets then number of images to feed the model at a time
+                            epoch: 50,
+                            batchSize: 10,
                             learningRate: 0.01f,
                             metricsCallback: (metrics) => Console.WriteLine(metrics),
                             validationSet: testDataset);

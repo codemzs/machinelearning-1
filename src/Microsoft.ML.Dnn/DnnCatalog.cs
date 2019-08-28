@@ -9,13 +9,12 @@ using System.Net;
 using Microsoft.ML.Data;
 using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.Dnn;
-using static Microsoft.ML.Transforms.DnnEstimator;
 using static Microsoft.ML.Transforms.ImageClassificationEstimator;
-using Options = Microsoft.ML.Transforms.DnnEstimator.Options;
+using Options = Microsoft.ML.Transforms.DnnRetrainEstimator.Options;
 
 namespace Microsoft.ML
 {
-    /// <include file='doc.xml' path='doc/members/member[@name="DnnTransformer"]/*' />
+    /// <include file='doc.xml' path='doc/members/member[@name="DnnRetrainTransformer"]/*' />
     public static class DnnCatalog
     {
 
@@ -38,11 +37,10 @@ namespace Microsoft.ML
         /// <param name="learningRate">Learning rate to use during optimization (Optional).</param>
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
-        /// <param name="dnnFramework"></param>
         /// <remarks>
         /// The support for retraining is under preview.
         /// </remarks>
-        public static DnnEstimator RetrainDnnModel(
+        public static DnnRetrainEstimator RetrainDnnModel(
             this ModelOperationsCatalog catalog,
             string[] outputColumnNames,
             string[] inputColumnNames,
@@ -56,8 +54,7 @@ namespace Microsoft.ML
             string metricOperation = null,
             string learningRateOperation = null,
             float learningRate = 0.01f,
-            bool addBatchDimensionInput = false,
-            DnnEstimator.DnnFramework dnnFramework = DnnEstimator.DnnFramework.Tensorflow)
+            bool addBatchDimensionInput = false)
         {
             var options = new Options()
             {
@@ -73,12 +70,11 @@ namespace Microsoft.ML
                 LearningRateOperation = learningRateOperation,
                 LearningRate = learningRate,
                 BatchSize = batchSize,
-                AddBatchDimensionInputs = addBatchDimensionInput,
-                ReTrain = true
+                AddBatchDimensionInputs = addBatchDimensionInput
             };
 
             var env = CatalogUtils.GetEnvironment(catalog);
-            return new DnnEstimator(env, options, DnnUtils.LoadDnnModel(env, modelPath, true));
+            return new DnnRetrainEstimator(env, options, DnnUtils.LoadDnnModel(env, modelPath, true));
         }
 
         /// <summary>
@@ -113,26 +109,26 @@ namespace Microsoft.ML
             string labelColumnName,
             string scoreColumnName = "Score",
             string predictedLabelColumnName = "PredictedLabel",
-            ImageClassificationEstimator.Architecture arch = ImageClassificationEstimator.Architecture.InceptionV3,
+            Architecture arch = Architecture.InceptionV3,
             int epoch = 10,
             int batchSize = 20,
             float learningRate = 0.01f,
             ImageClassificationMetricsCallback metricsCallback = null,
             int statisticFrequency = 1,
-            ImageClassificationEstimator.DnnFramework framework = ImageClassificationEstimator.DnnFramework.Tensorflow,
+            DnnFramework framework = DnnFramework.Tensorflow,
             string modelSavePath = null,
             string checkpointName = "_retrain_checkpoint",
             IDataView validationSet = null,
             bool testOnTrainSet = true,
             bool reuseTrainSetBottleneckCachedValues = false,
             bool reuseValidationSetBottleneckCachedValues = false,
-            string trainSetBottleneckCachedValuesFilePath = "trainSetBottleneckFile.txt",
-            string validationSetBottleneckCachedValuesFilePath = "validationSetBottleneckFile.txt"
+            string trainSetBottleneckCachedValuesFilePath = "trainSetBottleneckFile.csv",
+            string validationSetBottleneckCachedValuesFilePath = "validationSetBottleneckFile.csv"
             )
         {
             var options = new ImageClassificationEstimator.Options()
             {
-                ModelLocation = arch == ImageClassificationEstimator.Architecture.ResnetV2101 ? @"resnet_v2_101_299.meta" : @"InceptionV3.meta",
+                ModelLocation = arch == Architecture.ResnetV2101 ? @"resnet_v2_101_299.meta" : @"InceptionV3.meta",
                 InputColumns = new[] { featuresColumnName },
                 OutputColumns = new[] { scoreColumnName, predictedLabelColumnName },
                 LabelColumn = labelColumnName,
@@ -158,7 +154,7 @@ namespace Microsoft.ML
 
             if (!File.Exists(options.ModelLocation))
             {
-                if (options.Arch == ImageClassificationEstimator.Architecture.InceptionV3)
+                if (options.Arch == Architecture.InceptionV3)
                 {
                     var baseGitPath = @"https://raw.githubusercontent.com/SciSharp/TensorFlow.NET/master/graph/InceptionV3.meta";
                     using (WebClient client = new WebClient())
@@ -173,7 +169,7 @@ namespace Microsoft.ML
                         ZipFile.ExtractToDirectory(Path.Combine(Directory.GetCurrentDirectory(), @"tfhub_modules.zip"), @"tfhub_modules");
                     }
                 }
-                else if(options.Arch == ImageClassificationEstimator.Architecture.ResnetV2101)
+                else if(options.Arch == Architecture.ResnetV2101)
                 {
                     var baseGitPath = @"https://aka.ms/mlnet-resources/image/ResNet101Tensorflow/resnet_v2_101_299.meta";
                     using (WebClient client = new WebClient())
