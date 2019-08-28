@@ -124,8 +124,8 @@ namespace Microsoft.ML
             string checkpointName = "_retrain_checkpoint",
             IDataView validationSet = null,
             bool testOnTrainSet = true,
-            bool reuseTrainSetBottleneckCachedValues = true,
-            bool reuseValidationSetBottleneckCachedValues = true,
+            bool reuseTrainSetBottleneckCachedValues = false,
+            bool reuseValidationSetBottleneckCachedValues = false,
             string trainSetBottleneckCachedValuesFilePath = "trainSetBottleneckFile.txt",
             string validationSetBottleneckCachedValuesFilePath = "validationSetBottleneckFile.txt"
             )

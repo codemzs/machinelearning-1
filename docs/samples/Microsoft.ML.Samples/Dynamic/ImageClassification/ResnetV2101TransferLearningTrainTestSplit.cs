@@ -9,20 +9,26 @@ using Microsoft.ML.Transforms;
 using static Microsoft.ML.DataOperationsCatalog;
 using System.Linq;
 using Microsoft.ML.Data;
+using System.IO.Compression;
+using System.Threading;
+using System.Net;
 
 namespace Samples.Dynamic
 {
-    public class InceptionV3TransferLearningTrainTestSplit
+    public class ResnetV2101TransferLearningTrainTestSplit
     {
         public static void Example()
         {
-            string assetsPath = @"C:\Users\mzs\Downloads";
-                //@"E:\machinelearning-samples\samples\csharp\getting-started\DeepLearning_TensorFlow_TransferLearning\ImageClassification.Train\assets";
+            string assetsRelativePath = @"../../../assets";
+            string assetsPath = GetAbsolutePath(assetsRelativePath);
 
-            //string imagesDownloadFolder = Path.Combine(assetsPath, "inputs", "images");
-            string imagesFolder = Path.Combine(assetsPath, "flower_photos");
-            //Path.Combine(assetsPath, "inputs", "images"); // "flower_photos"
-            string imagesForPredictions = Path.Combine(assetsPath, "inputs", "images-for-predictions", "FlowersForPredictions");
+            var outputMlNetModelFilePath = Path.Combine(assetsPath, "outputs", "imageClassifier.zip");
+
+            string imagesDownloadFolderPath = Path.Combine(assetsPath, "inputs", "images");
+
+            //Download the image set and unzip
+            string finalImagesFolderName = DownloadImageSet(imagesDownloadFolderPath);
+            string fullImagesetFolderPath = Path.Combine(imagesDownloadFolderPath, finalImagesFolderName);
 
             try
             {
@@ -30,19 +36,13 @@ namespace Samples.Dynamic
                 MLContext mlContext = new MLContext(seed: 1);
 
                 //Load all the original images info
-                IEnumerable<ImageData> images = LoadImagesFromDirectory(folder: imagesFolder, useFolderNameasLabel: true);
-                IDataView fullImagesDataset = mlContext.Data.LoadFromEnumerable(images);
-                IDataView shuffledFullImagesDataset = mlContext.Data.ShuffleRows(fullImagesDataset);
+                IEnumerable<ImageData> images = LoadImagesFromDirectory(folder: fullImagesetFolderPath, useFolderNameasLabel: true);
+                IDataView shuffledFullImagesDataset = mlContext.Data.ShuffleRows(mlContext.Data.LoadFromEnumerable(images));
                 shuffledFullImagesDataset = mlContext.Transforms.Conversion.MapValueToKey("Label")
                     .Fit(shuffledFullImagesDataset)
                     .Transform(shuffledFullImagesDataset);
 
-                 //Find the original label names.
-               VBuffer<ReadOnlyMemory<char>> keys = default;
-                shuffledFullImagesDataset.Schema["Label"].GetKeyValues(ref keys);
-                var originalLabels = keys.DenseValues().ToArray();
-
-                // Split the data 80:20 into train and test sets, train and evaluate.
+                // Split the data 90:10 into train and test sets, train and evaluate.
                 TrainTestData trainTestData = mlContext.Data.TrainTestSplit(shuffledFullImagesDataset, testFraction: 0.1, seed: 1);
                 IDataView trainDataset = trainTestData.TrainSet;
                 IDataView testDataset = trainTestData.TestSet;
@@ -50,12 +50,10 @@ namespace Samples.Dynamic
                 var pipeline = mlContext.Model.ImageClassification("ImagePath", "Label",
                             arch: ImageClassificationEstimator.Architecture.ResnetV2101,
                             epoch: 100, //An epoch is one learning cycle where the learner sees the whole training data set.
-                            batchSize: 100, // batchSize sets then number of images to feed the model at a time
+                            batchSize: 10, // batchSize sets then number of images to feed the model at a time
                             learningRate: 0.01f,
                             metricsCallback: (metrics) => Console.WriteLine(metrics),
-                            validationSet: testDataset,
-                            reuseTrainSetBottleneckCachedValues: true,
-                            reuseValidationSetBottleneckCachedValues: true);
+                            validationSet: testDataset);
 
 
                 Console.WriteLine("*** Training the image classification model with DNN Transfer Learning on top of the selected pre-trained model/architecture ***");
@@ -70,7 +68,7 @@ namespace Samples.Dynamic
 
                 Console.WriteLine("Training with transfer learning took: " + (elapsedMs / 1000).ToString() + " seconds");
 
-                mlContext.Model.Save(trainedModel, trainDataset.Schema, "model.zip");
+                mlContext.Model.Save(trainedModel, shuffledFullImagesDataset.Schema, "model.zip");
 
                 ITransformer loadedModel;
                 DataViewSchema schema;
@@ -79,15 +77,15 @@ namespace Samples.Dynamic
 
                 EvaluateModel(mlContext, testDataset, loadedModel);
 
-                //VBuffer<ReadOnlyMemory<char>> keys = default;
-                //loadedModel.GetOutputSchema(schema)["Label"].GetKeyValues(ref keys);
+                VBuffer<ReadOnlyMemory<char>> keys = default;
+                loadedModel.GetOutputSchema(schema)["Label"].GetKeyValues(ref keys);
 
-                //watch = System.Diagnostics.Stopwatch.StartNew();
-                //TrySinglePrediction(imagesForPredictions, mlContext, loadedModel, keys.DenseValues().ToArray());
-                //watch.Stop();
-                //elapsedMs = watch.ElapsedMilliseconds;
+                watch = System.Diagnostics.Stopwatch.StartNew();
+                TrySinglePrediction(fullImagesetFolderPath, mlContext, loadedModel, keys.DenseValues().ToArray());
+                watch.Stop();
+                elapsedMs = watch.ElapsedMilliseconds;
 
-                //Console.WriteLine("Prediction engine took: " + (elapsedMs / 1000).ToString() + " seconds");
+                Console.WriteLine("Prediction engine took: " + (elapsedMs / 1000).ToString() + " seconds");
             }
             catch (Exception ex)
             {
@@ -170,6 +168,80 @@ namespace Samples.Dynamic
                 };
 
             }
+        }
+
+        public static string DownloadImageSet(string imagesDownloadFolder)
+        {
+            // get a set of images to teach the network about the new classes
+
+            //SINGLE SMALL FLOWERS IMAGESET (200 files)
+            string fileName = "flower_photos_small_set.zip";
+            string url = $"https://mlnetfilestorage.file.core.windows.net/imagesets/flower_images/flower_photos_small_set.zip?st=2019-08-07T21%3A27%3A44Z&se=2030-08-08T21%3A27%3A00Z&sp=rl&sv=2018-03-28&sr=f&sig=SZ0UBX47pXD0F1rmrOM%2BfcwbPVob8hlgFtIlN89micM%3D";
+            Download(url, imagesDownloadFolder, fileName);
+            UnZip(Path.Join(imagesDownloadFolder, fileName), imagesDownloadFolder);
+
+            return Path.GetFileNameWithoutExtension(fileName);
+        }
+
+        public static bool Download(string url, string destDir, string destFileName)
+        {
+            if (destFileName == null)
+                destFileName = url.Split(Path.DirectorySeparatorChar).Last();
+
+            Directory.CreateDirectory(destDir);
+
+            string relativeFilePath = Path.Combine(destDir, destFileName);
+
+            if (File.Exists(relativeFilePath))
+            {
+                Console.WriteLine($"{relativeFilePath} already exists.");
+                return false;
+            }
+
+            var wc = new WebClient();
+            Console.WriteLine($"Downloading {relativeFilePath}");
+            var download = Task.Run(() => wc.DownloadFile(url, relativeFilePath));
+            while (!download.IsCompleted)
+            {
+                Thread.Sleep(1000);
+                Console.Write(".");
+            }
+            Console.WriteLine("");
+            Console.WriteLine($"Downloaded {relativeFilePath}");
+
+            return true;
+        }
+
+        public static void UnZip(String gzArchiveName, String destFolder)
+        {
+            var flag = gzArchiveName.Split(Path.DirectorySeparatorChar).Last().Split('.').First() + ".bin";
+            if (File.Exists(Path.Combine(destFolder, flag))) return;
+
+            Console.WriteLine($"Extracting.");
+            var task = Task.Run(() =>
+            {
+                ZipFile.ExtractToDirectory(gzArchiveName, destFolder);
+            });
+
+            while (!task.IsCompleted)
+            {
+                Thread.Sleep(200);
+                Console.Write(".");
+            }
+
+            File.Create(Path.Combine(destFolder, flag));
+            Console.WriteLine("");
+            Console.WriteLine("Extracting is completed.");
+        }
+
+        public static string GetAbsolutePath(string relativePath)
+        {
+            FileInfo _dataRoot = new FileInfo(typeof(ResnetV2101TransferLearningTrainTestSplit).Assembly.Location);
+            string assemblyFolderPath = _dataRoot.Directory.FullName;
+
+            string fullPath = Path.Combine(assemblyFolderPath, relativePath);
+
+            return fullPath;
         }
 
         public class ImageData
