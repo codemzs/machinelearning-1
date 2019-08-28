@@ -515,6 +515,7 @@ namespace Microsoft.ML.Transforms
             Tensor evaluationStep = null;
             Tensor prediction = null;
             Tensor bottleneckTensor = evalGraph.OperationByName(_bottleneckOperationName);
+            int height = _arch == Architecture.InceptionV3 ? 299 : 229;
 
             tf_with(evalGraph.as_default(), graph =>
             {
@@ -523,7 +524,7 @@ namespace Microsoft.ML.Transforms
 
                 tf.train.Saver().restore(evalSess, _checkpointPath);
                 (evaluationStep, prediction) = AddEvaluationStep(finalTensor, groundTruthInput);
-                (_jpegData, _resizedImage) = AddJpegDecoding(299, 299, 3);
+                (_jpegData, _resizedImage) = AddJpegDecoding(height, height, 3);
             });
 
             return (evalSess, _labelTensor, evaluationStep, prediction);
@@ -749,22 +750,20 @@ namespace Microsoft.ML.Transforms
             if (arch == ImageClassificationEstimator.Architecture.ResnetV2101)
             {
                 _bottleneckOperationName = "resnet_v2_101/SpatialSqueeze";
+                _inputTensorName = "input";
             }
             else if (arch == ImageClassificationEstimator.Architecture.InceptionV3)
             {
                 _bottleneckOperationName = "module_apply_default/hub_output/feature_vector/SpatialSqueeze";
-            }
-
-            if (arch == ImageClassificationEstimator.Architecture.ResnetV2101)
-                _inputTensorName = "input";
-            else if (arch == ImageClassificationEstimator.Architecture.InceptionV3)
                 _inputTensorName = "Placeholder";
+            }
 
             _outputs = new[] { scoreColumnName, predictedLabelColumnName };
 
             if (loadModel == false)
             {
-                (_jpegData, _resizedImage) = AddJpegDecoding(299, 299, 3);
+                int height = _arch == Architecture.InceptionV3 ? 299 : 229;
+                (_jpegData, _resizedImage) = AddJpegDecoding(height, height, 3);
                 _jpegDataTensorName = _jpegData.name;
                 _resizedImageTensorName = _resizedImage.name;
 
@@ -828,6 +827,7 @@ namespace Microsoft.ML.Transforms
             {
                 w.WriteByteArray(buffer.Data);
             });
+            status.Check(true);
         }
 
         ~ImageClassificationTransformer()
