@@ -18,7 +18,7 @@ namespace Microsoft.ML.CodeGenerator.Templates.Console
     /// Class to produce the template output
     /// </summary>
     
-    #line 1 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+    #line 1 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.TextTemplating", "16.0.0.0")]
     internal partial class ConsumeModel : ConsumeModelBase
     {
@@ -29,31 +29,31 @@ namespace Microsoft.ML.CodeGenerator.Templates.Console
         public virtual string TransformText()
         {
             
-            #line 6 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 6 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
 if(Target == CSharp.GenerateTarget.Cli){ 
             
             #line default
             #line hidden
             
-            #line 7 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 7 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
 CLI_Annotation();
             
             #line default
             #line hidden
             
-            #line 8 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 8 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
  } else if(Target == CSharp.GenerateTarget.ModelBuilder){ 
             
             #line default
             #line hidden
             
-            #line 9 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 9 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
 MB_Annotation();
             
             #line default
             #line hidden
             
-            #line 10 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 10 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
  } 
             
             #line default
@@ -61,21 +61,21 @@ MB_Annotation();
             this.Write("\r\nusing System;\r\nusing System.Collections.Generic;\r\nusing System.Linq;\r\nusing Sys" +
                     "tem.Text;\r\nusing Microsoft.ML;\r\nusing ");
             
-            #line 17 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 17 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
             this.Write(this.ToStringHelper.ToStringWithCulture(Namespace));
             
             #line default
             #line hidden
             this.Write(".Model;\r\nusing ");
             
-            #line 18 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 18 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
             this.Write(this.ToStringHelper.ToStringWithCulture(Namespace));
             
             #line default
             #line hidden
             this.Write(".Model.DataModels;\r\n\r\nnamespace ");
             
-            #line 20 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+            #line 20 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
             this.Write(this.ToStringHelper.ToStringWithCulture(Namespace));
             
             #line default
@@ -107,7 +107,7 @@ MB_Annotation();
             return this.GenerationEnvironment.ToString();
         }
         
-        #line 43 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
+        #line 43 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\ConsumeModel.tt"
 
 public string Namespace {get;set;}
 internal CSharp.GenerateTarget Target {get;set;}
@@ -116,7 +116,7 @@ internal CSharp.GenerateTarget Target {get;set;}
         #line default
         #line hidden
         
-        #line 1 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 1 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 
 void CLI_Annotation()
 {
@@ -124,7 +124,7 @@ void CLI_Annotation()
         #line default
         #line hidden
         
-        #line 3 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 3 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 this.Write(@"//*****************************************************************************************
 //*                                                                                       *
 //* This is an auto-generated file by Microsoft ML.NET CLI (Command-Line Interface) tool. *
@@ -136,7 +136,7 @@ this.Write(@"//*****************************************************************
         #line default
         #line hidden
         
-        #line 9 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 9 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 
 }
 
@@ -144,7 +144,7 @@ this.Write(@"//*****************************************************************
         #line default
         #line hidden
         
-        #line 12 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 12 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 
 void MB_Annotation()
 {
@@ -152,14 +152,14 @@ void MB_Annotation()
         #line default
         #line hidden
         
-        #line 14 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 14 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 this.Write("// This file was auto-generated by ML.NET Model Builder. \r\n");
 
         
         #line default
         #line hidden
         
-        #line 16 "C:\CodeHub\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
+        #line 16 "E:\machinelearning\src\Microsoft.ML.CodeGenerator\Templates\Console\Annotation.ttinclude"
 
 }
 
